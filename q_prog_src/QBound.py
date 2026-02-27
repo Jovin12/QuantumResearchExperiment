@@ -27,6 +27,8 @@ def get_gate_name_for_pair(properties, qubits):
             
     return None
 
+# function to get the necessary noise data from ibm_cloud 
+# gets the properties object for each day of the 14 day window
 def look_back_window_ForError(backend, date_selected = datetime.now()):
     look_back_days = 14
     historical_data = []
@@ -51,6 +53,10 @@ def look_back_window_ForError(backend, date_selected = datetime.now()):
             print("Half way done...") 
     return historical_data
 
+
+# uses the properties generated to replicated the noise into a noise model 
+# then use that to generate effective labels/outputs with noise 
+# and work on it without noise
 def get_labels_fromNoise(qc, historic_data, backend):
     print("Getting error prediction labels from circuit nonoise and noise values")
 
@@ -80,7 +86,8 @@ def get_labels_fromNoise(qc, historic_data, backend):
 
     return torch.tensor(labels, dtype = torch.float32)   # must convertt to tensor so it can be used in LSTm
 
-
+# this uses the output form the previous funciton to get the 
+# T1, Tw, Readout and gate errors
 def extract_time_series_from_historic(historical_data, qubit_indices = [0], gate_qubit = [(0,1)]):
     print("Starting Error values Extraction from historic data.")
     extracted_data = []
@@ -203,6 +210,8 @@ def predict_vqc_bound(model, x_train):
         return predicted_bound
 
 # provider is the fake backend that will be used for transpiling and other uses
+# this is the function that will be called by the website to run the QuBound from scratch
+# IF YOU WANT TO RUN THE VQE CHECK THE MAIN FUNCTION WHICH RUNS THE PRESET VQC train_circuit.qpy
 def call_QuBound(qc, provider, date = datetime.now()):
     token="ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"
     service = QiskitRuntimeService(
@@ -298,8 +307,8 @@ def main():
     backend = FakeFez()
 
     # qc = transpile(qc, backend, optimization_level=3)
-    depth = qc.depth()
-    gate_counts = qc.count_ops().get('ecr', 0) + qc.count_ops().get('cz', 0) + qc.count_ops().get('cx', 0)
+    # depth = qc.depth()
+    # gate_counts = qc.count_ops().get('ecr', 0) + qc.count_ops().get('cz', 0) + qc.count_ops().get('cx', 0)
 
     # why is this scaling factor necessary
     # REASON: the model is trained on a single gate for each of the basis gates
