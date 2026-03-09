@@ -1,5 +1,5 @@
 from pydantic_model import *
-from dbConnection import collection_config, collection_user, collection_files, collection_QuBound_file
+from dbConnection import collection_config, collection_user, collection_files, collection_QuBound_file, collection_QuCAD_file
 from fastapi import FastAPI, HTTPException, Response
 from fastapi import UploadFile, File, Form
 from bson import ObjectId
@@ -8,6 +8,7 @@ from bson.binary import Binary
 from datetime import datetime
 import torch
 import io
+import json
 
 app = FastAPI()
 
@@ -73,6 +74,48 @@ async def signup(data: LoginRequest):
         "id": str(result.inserted_id),
         "username": data.username
     }
+
+
+
+
+@app.get("/load_QuCAD")
+async def load_QuCAD_Qbank(model_name: str):
+
+    doc = collection_QuCAD_file.find_one({"model_name": model_name})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    qucad_bank_data = json.loads(doc["qucad_bank"])
+    
+    return qucad_bank_data
+
+@app.post("/save_QuCAD")
+async def save_QuBound_data(
+    username: str = Form(...),
+    model_name: str = Form(...),
+    qucad_bank: str = Form(...)
+    ):
+    try:
+        model_document = {
+            "username": username,
+            "model_name": model_name,
+            "qucad_bank": qucad_bank,
+        }
+
+        # 4. Insert into your results_files or a new 'models' collection
+        result = collection_QuCAD_file.insert_one(model_document)
+
+        return {
+            "status": "success",
+            "message": f"QuCAD model saved to MongoDB",
+            "id": str(result.inserted_id)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 
 @app.get("/load_QUbound")
 async def load_QuBound_data(model_name:str):

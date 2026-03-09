@@ -24,5 +24,6 @@ collection_config = db["IBM_configs"]
 collection_user = db["users"]
 collection_files = db['results_files']
 collection_QuBound_file = db['QuBound_Results_files']
+collection_QuCAD_file = db['QuCAD_qbank_data']
 # client.admin.command('ping')
 # print(client.admin.command('ping'))

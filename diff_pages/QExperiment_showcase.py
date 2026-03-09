@@ -1,6 +1,6 @@
 import streamlit as st
 from diff_pages import Home as home
-from q_prog_src import qiskit_circuit_general, CompVQC, QBound
+from q_prog_src import qiskit_circuit_general, CompVQC, QBound, QuCAD
 from qiskit import QuantumCircuit
 from qiskit_ibm_runtime.fake_provider import FakeFez, FakeMarrakesh, FakeTorino
 from datetime import datetime
@@ -8,9 +8,25 @@ import time
 import requests
 import torch
 import io
+import numpy as np
+from qiskit import transpile
+import json
+
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.float32, np.float64)):
+            return float(obj)
+        if isinstance(obj, (np.int32, np.int64)):
+            return int(obj)
+        return super(NumpyEncoder, self).default(obj)
 
 def page():
     # --- 1. SESSION STATE INITIALIZATION ---
+    if "qucad_bank" not in st.session_state: 
+        st.session_state.qucad_bank = "not found"
     if "verified" not in st.session_state:
         st.session_state.verified = False
     if "submitted" not in st.session_state:
@@ -58,6 +74,48 @@ def page():
             )
             if compression_selection == "No Compression":
                 compression_selection = None
+        
+        if compression_selection == "QUCAD":
+            QuCAD_option = st.radio(
+                label="noise_opt",
+                options=["User Previous QNN optimization","Start Fresh"],
+                index=1,
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+
+            if QuCAD_option == "Start Fresh":
+                st.warning("You have selected QUCAD which require the day of the noise you want to simulate.")
+                
+            
+            elif QuCAD_option == "User Previous QNN optimization":
+                # st.write("huh")
+                model_name = st.text_input("Enter your unique name for this QuCAD model you want to use :")
+                if model_name:
+                    FASTAPI_URL = f"http://127.0.0.1:8000/load_QuCAD?model_name={model_name}"
+                    try:
+                        response = requests.get(FASTAPI_URL)
+                        if response.status_code == 200:
+                            qucad_bank_str = response.json()
+
+                            if isinstance(qucad_bank_str, str):
+                                qucad_bank = json.loads(qucad_bank_str)
+                            else: 
+                                qucad_bank = qucad_bank_str
+
+                            st.session_state.qucad_bank = qucad_bank
+                            # st.write(st.session_state.qucad_bank)
+                            st.success("Model retrieved")
+                        else:
+                            st.error("Failed to retrieve model from database.")
+                    except Exception as e:
+                        st.error(f"Connection error: {e}")
+
+
+            QuCAD_date_input = st.date_input("Select Date", value=datetime.now())
+            QuCAD_date_input = datetime.combine(QuCAD_date_input, datetime.min.time())
+
+            # st.write(QuCAD_date_input)
 
         col3, col4 = st.columns([2,3], vertical_alignment="center")
         with col3: 
@@ -165,25 +223,89 @@ def page():
                         result = CompVQC.admmOptimizedCompVQC(qp)
                         st.session_state.main_qc = CompVQC.resultsCompressVQC(result, active_qc)
                         compress_bar.progress(100, "Compression Complete")
+
+
+
+
+                    elif compression_selection == "QUCAD": 
+
+                        vqc = st.session_state.main_qc
+                        num_params = vqc.num_parameters
+                        noise_model, backend_ibm, target_props = QuCAD.get_noiseModel_andBackend_ondate()
+                        compress_bar.progress(0, f'Collected Circuit with parameters: {num_params}')
+
+                        if st.session_state.qucad_bank == "not found":
+
+                            # st.write(num_params)
+                            # compress_bar.progress(0, f'Collected Circuit with parameters: {num_params}')
+
+                            final_theta, final_mask, stats = QuCAD.run_qucad_training_noisy(
+                                st.session_state.main_qc, 
+                                noise_model, 
+                                backend_ibm,
+                                iterations=10, 
+                                lam=0.005, 
+                                rho=500.0
+                            )
+
+                            compress_bar.progress(20, f"Completed Admm optimized QUCAD compression compressed parameters{np.count_nonzero(final_mask)}")
+                            robust_theta = final_theta * (final_mask != 0)
+
+                            bound_vqc = vqc.assign_parameters(robust_theta)
+                            robust_vqc_compressed = transpile(bound_vqc, optimization_level=3)
+
+                            compress_bar.progress(40, "Generating the LUT necessary for QUCAD")
+                            st.session_state.qucad_bank = QuCAD.generate_qucad_lut(vqc, backend_ibm)
+                        # st.write(qucad_bank)
+
+                        compress_bar.progress(80, "LUT GENERATED")
+
+                        # target_date = datetime(2025, 2, 3)
+                        noise_model_future, backend_future, props_future = QuCAD.get_noiseModel_andBackend_ondate(QuCAD_date_input)
+                        multiplier = QuCAD.get_current_noise_multiplier(props_future, backend_ibm.properties())
+
+                        compress_bar.progress(90, f"Noise drift calculated: {multiplier:.2f}")
+                        st.session_state.main_qc = QuCAD.deploy_qucad_model(vqc, st.session_state.qucad_bank , multiplier)
+                        compress_bar.progress(100,"Completed and implemented Noise aware compression")
+
+
+
+
+
                     else:
                         compress_bar.progress(100, "No Compression Requested")
 
+
+
+
                     # 2. Fidelity
                     if fidelity_selection == "Simple Fidelity":
-                        st.session_state.fidelity_error_bound = qiskit_circuit_general.simpleFidelityEstimator(st.session_state.main_qc)
-                        fidelity_bar.progress(100, text=f"Fidelity calculated")
+                        try: 
+                            st.session_state.fidelity_error_bound = qiskit_circuit_general.simpleFidelityEstimator(st.session_state.main_qc)
+                            fidelity_bar.progress(100, text=f"Fidelity calculated")
+                        except Exception as e: 
+                            fidelity_bar.progress(100, text=f"Fidelity CANNOT be calculated for parameterized circuit")
                     elif fidelity_selection == "QuBound":
                         st.session_state.fidelity_error_bound, st.session_state.model = QBound.call_QuBound(st.session_state.main_qc, provider, date)
                         fidelity_bar.progress(100, text=f"QBound finished")
                     else:
                         fidelity_bar.progress(100, text="Fidelity Step Skipped")
 
+
+
+
+
+
                     # 3. Transpile
-                    st.session_state.main_qc = qiskit_circuit_general.transpile_optim(st.session_state.main_qc, backend_name, optmization_level)
+                    # st.session_state.main_qc = qiskit_circuit_general.transpile_optim(st.session_state.main_qc, backend_name, optmization_level)
+                    st.session_state.main_qc = qiskit_circuit_general.transpile_optim(st.session_state.main_qc, optmization_level)
                     transpile_bar.progress(100, text="Transpilation Complete")
                     
                     st.session_state.experiment_finished = True
                 
+
+
+
                 else:
                     # Logic to keep bars at 100% when experiment is already done
                     compress_bar.progress(100, text="Compression Phase: Finished")
@@ -198,8 +320,42 @@ def page():
                 # Database Upload Section
                 st.divider()
                 st.markdown("### 📤 Database Management")
+
+
+
+                with st.form("db_upload_QuCAD"):
+                    model_name = st.text_input("Assign a unique name to this QCAD QNN:")
+                    upload_btn_qucad = st.form_submit_button("Upload Model to MongoDB")
+
+                    if upload_btn_qucad:
+                        if not model_name:
+                            st.error("Please enter a model name.")
+                        elif st.session_state.qucad_bank  == "not found":
+                            st.error("No qucad look up table found")
+                        else:
+                            try:
+                                # Logic for JIT conversion and upload
+                                # buffer = io.BytesIO()
+                                # torch.jit.save(st.session_state.model, buffer)
+                                # buffer.seek(0)
+                                qucad_bank_json = json.dumps(st.session_state.qucad_bank, cls=NumpyEncoder)
+                                payload = {"username": "jovin", "model_name": model_name,"qucad_bank": qucad_bank_json }
+                                # files = {"file": (f"{model_name}.pt", buffer, "application/octet-stream")}
+
+                                with st.spinner("Uploading..."):
+                                    res = requests.post("http://127.0.0.1:8000/save_QuCAD", data=payload)
+                                
+                                if res.status_code == 200:
+                                    st.success(f"Model '{model_name}' saved successfully!")
+                                else:
+                                    st.error(f"Upload failed: {res.text}")
+                            except Exception as e:
+                                st.error(f"Error during upload: {e}")
+
+
+
                 
-                with st.form("db_upload_form"):
+                with st.form("db_upload_Qbound"):
                     model_name_input = st.text_input("Assign a unique name to this QBound model:")
                     upload_btn = st.form_submit_button("Upload Model to MongoDB")
 
