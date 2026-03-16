@@ -1,6 +1,7 @@
 import streamlit as st
+from QuantumResearchExperiment.q_prog_src import test_QBound
 from diff_pages import Home as home
-from q_prog_src import qiskit_circuit_general, CompVQC, QBound, QuCAD
+from q_prog_src import qiskit_circuit_general, CompVQC, QuCAD
 from qiskit import QuantumCircuit
 from qiskit_ibm_runtime.fake_provider import FakeFez, FakeMarrakesh, FakeTorino
 from datetime import datetime
@@ -286,7 +287,7 @@ def page():
                         except Exception as e: 
                             fidelity_bar.progress(100, text=f"Fidelity CANNOT be calculated for parameterized circuit")
                     elif fidelity_selection == "QuBound":
-                        st.session_state.fidelity_error_bound, st.session_state.model = QBound.call_QuBound(st.session_state.main_qc, provider, date)
+                        st.session_state.fidelity_error_bound, st.session_state.model = test_QBound.call_QuBound(st.session_state.main_qc, provider, date)
                         fidelity_bar.progress(100, text=f"QBound finished")
                     else:
                         fidelity_bar.progress(100, text="Fidelity Step Skipped")
