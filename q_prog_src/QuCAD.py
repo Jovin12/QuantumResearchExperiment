@@ -8,7 +8,36 @@ from qiskit_aer.noise import NoiseModel
 from qiskit_ibm_runtime import QiskitRuntimeService
 from qiskit_aer.noise import NoiseModel, depolarizing_error, thermal_relaxation_error
 from qiskit import transpile
-from datetime import datetime
+from datetime import datetime, timedelta
+from sklearn.cluster import KMeans
+
+
+# clustering
+def extract_noise_features(props):
+    """
+    Converts backend calibration properties into a feature vector.
+    """
+
+    t1_vals = [props.t1(i) for i in range(len(props.qubits))]
+    t2_vals = [props.t2(i) for i in range(len(props.qubits))]
+
+    two_q_gates = ['cx', 'ecr', 'cz']
+    cx_errors = [
+        g.parameters[0].value
+        for g in props.gates
+        if g.gate in two_q_gates
+    ]
+
+    features = np.array([
+        np.mean(t1_vals),
+        np.mean(t2_vals),
+        np.mean(cx_errors) if cx_errors else 0,
+        np.std(cx_errors) if cx_errors else 0
+    ])
+
+    return features
+
+
 
 
 
@@ -103,65 +132,97 @@ def get_current_noise_multiplier(current_props, baseline_props):
 
 
 def deploy_qucad_model(vqc, lut, current_multiplier):
-    """
-    Selects the best weights from the LUT based on current noise.
-    """
-    # Find the key in LUT closest to current_multiplier
-    available_ms = [float(k.replace('x', '')) for k in lut.keys()]
-    best_match = min(available_ms, key=lambda x: abs(x - current_multiplier))
-    
-    print(f"[QuCAD] Current Noise: {current_multiplier:.2f}x. Selecting {best_match}x Profile.")
-    
-    robust_weights = lut[f"{best_match}x"]
-    
-    # Bind and Transpile to remove pruned gates
-    deployed_circuit = vqc.assign_parameters(robust_weights)
+
+    clusters = lut["clusters"]
+
+    # We embed multiplier into same dimensionality
+    # as centroid for compatibility
+    query = np.array([current_multiplier, 0, 0, 0])
+
+    best_dist = float("inf")
+    best_weights = None
+
+    for c in clusters:
+
+        centroid = np.array(c["centroid"])
+
+        dist = np.linalg.norm(query - centroid)
+
+        if dist < best_dist:
+            best_dist = dist
+            best_weights = c["weights"]
+
+    print("[QuCAD] Deploying cluster representative model")
+    print("Best Cluster Centroid:", centroid)
+
+    deployed_circuit = vqc.assign_parameters(best_weights)
     deployed_circuit = transpile(deployed_circuit, optimization_level=3)
-    
+
     return deployed_circuit
 
 
 
-def generate_qucad_lut(vqc, backend, multipliers=[0.5, 1.0, 1.5, 2.0, 2.5, 4.0]):
-    lut = {}
-    props = backend.properties()
-    
-    for m in multipliers:
-        print(f"\n[QuCAD] Profiling Noise Scenario: {m}x Magnitude")
-        scaled_noise = NoiseModel()
-        
-        for i in range(vqc.num_qubits):
-            t1 = props.t1(i) / m
-            t2 = min(props.t2(i) / m, 2 * t1)
-            
-            for gate in props.gates:
-                if i in gate.qubits:
-                    # 1. Get Error Rate
-                    p_gate_error = gate.parameters[0].value * m
-                    p_gate_error = min(p_gate_error, 0.99)
-                    
-                    # 2. Get Gate Duration safely
-                    gate_time = 5e-8 # Default fallback
-                    for param in gate.parameters:
-                        if param.name in ['gate_length', 'duration']:
-                            gate_time = param.value
-                            break
-                    
-                    # 3. Create Noise Channels
-                    error_thermal = thermal_relaxation_error(t1, t2, gate_time)
-                    error_depol = depolarizing_error(p_gate_error, len(gate.qubits))
-                    combined_error = error_thermal.compose(error_depol)
-                    
-                    scaled_noise.add_quantum_error(combined_error, gate.gate, gate.qubits)
 
-        # ADMM logic
-        adaptive_lam = 0.005 * m 
+def generate_qucad_lut(vqc, backend, days=20, clusters=4):
+
+    feature_bank = []
+    weight_bank = []
+
+    print("\n[QuCAD] Collecting Noise Snapshots")
+
+    for day in range(days):
+
+        cal_date = datetime.now() - timedelta(days=day)
+        props = backend.properties(datetime=cal_date)
+
+        if props is None:
+            continue
+
+        print(f"[QuCAD] Snapshot {cal_date.strftime('%Y-%m-%d')}")
+
+        noise_model = NoiseModel.from_backend(backend)
+
+        features = extract_noise_features(props)
+
         theta_trained, z_mask, _ = run_qucad_training_noisy(
-            vqc, scaled_noise,backend, iterations=10, lam=adaptive_lam, rho=500.0
+            vqc,
+            noise_model,
+            backend,
+            iterations=10,
+            lam=0.005,
+            rho=500.0
         )
-        
-        lut[f"{m}x"] = theta_trained * (z_mask != 0)
-        # print(f"Scenario {m}x Complete. Sparsity: {np.count_nonzero(z_mask)}/{vqc.num_parameters}")
+
+        robust_theta = theta_trained * (z_mask != 0)
+
+        feature_bank.append(features)
+        weight_bank.append(robust_theta)
+
+    feature_bank = np.array(feature_bank)
+
+    print("\n[QuCAD] Performing Unsupervised Clustering")
+
+    kmeans = KMeans(n_clusters=clusters, random_state=42)
+    labels = kmeans.fit_predict(feature_bank)
+
+    lut = {"clusters": []}
+
+    for c in range(clusters):
+
+        cluster_indices = np.where(labels == c)[0]
+
+        if len(cluster_indices) == 0:
+            continue
+
+        # Choose first model as representative
+        rep_idx = cluster_indices[0]
+
+        lut["clusters"].append({
+            "centroid": kmeans.cluster_centers_[c],
+            "weights": weight_bank[rep_idx]
+        })
+
+        print(f"[QuCAD] Cluster {c} created with {len(cluster_indices)} models")
 
     return lut
 
@@ -182,7 +243,7 @@ def get_noiseModel_andBackend_ondate(date_time=datetime.now()):
 
 def main():
     noise_model, backend_ibm, target_props = get_noiseModel_andBackend_ondate()
-    with open("../../trained_circuit_2.qpy", 'rb') as file:
+    with open("../../trained_circuit_3.qpy", 'rb') as file:
         vqc = qpy.load(file)[0]
     num_params = vqc.num_parameters
 
