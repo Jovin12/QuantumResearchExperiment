@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))
+
 import streamlit as st
 from streamlit_option_menu import option_menu
 from frontend_streamLit.login_frontend import login_page, signup_page, choose_action

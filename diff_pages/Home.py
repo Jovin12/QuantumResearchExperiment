@@ -2,7 +2,7 @@ import streamlit as st
 
 css = """
     .st-key-green_container {
-        background-color: rgba(100, 145, 100, 0.3); 
+        background-color: rgba(104, 144, 23, 0.6); 
         border-radius: 20px; 
         padding: 20px; 
         max-width: 1000 rem;

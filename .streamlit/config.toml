@@ -1,10 +1,12 @@
 [theme]
 font = "serif"
-primaryColor = "#1DB954"
-backgroundColor = "#121212"
-secondaryBackgroundColor = "#181818"
-textColor = "#FFFFFF"
+primaryColor = "#FFCC33"
+backgroundColor = "#b5b2b271"
+secondaryBackgroundColor = "rgba(0, 102, 51, 0.92)"
+
+#secondaryBackgroundColor = "#446f23eb"
+textColor = "#000000"
 
 [theme.sidebar]
 font = "sans-serif"
-
+textColor = "#000000"
