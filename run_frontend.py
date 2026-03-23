@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(__file__))
 import streamlit as st
 from streamlit_option_menu import option_menu
 from frontend_streamLit.login_frontend import login_page, signup_page, choose_action
-from diff_pages import Home, QExperiment_Display, QExperiment_showcase
+from diff_pages import Home, QExperiment_Display, QExperiment_showcase, flowChartProto
 
 # 1. Config FIRST
 # st.set_page_config(layout="centered")
@@ -27,7 +27,7 @@ if st.session_state.username != "":
         st.session_state.page = option_menu(
             menu_title=None,
             # options=["Home", "Quantum Experiment Data Entry", "Quantum Experiment Display", "Noise Injection Experiment", "Circuit Compress & Predict"],
-            options=["Home", "Quantum Experiment Display", "Circuit Compress & Predict"],
+            options=["Home", "Quantum Experiment Display", "Circuit Compress & Predict", 'Circuit FlowChart Builder (PROTOTYPE)'],
             icons=["house", "cloud-upload", "gear", "gear"],
             default_index=0
         )
@@ -45,3 +45,5 @@ else:
     elif st.session_state.page == "Circuit Compress & Predict":
         # QExpeiment_CircuitCompressPerformance.page()
         QExperiment_showcase.page()
+    elif st.session_state.page == 'Circuit FlowChart Builder (PROTOTYPE)':
+        flowChartProto.flow_page()
