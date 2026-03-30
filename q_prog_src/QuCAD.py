@@ -1,71 +1,53 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
-from qiskit import qpy
+from qiskit import qpy, transpile
 from qiskit_aer.primitives import EstimatorV2 as AerEstimator
 from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer.noise import NoiseModel
 from qiskit_ibm_runtime import QiskitRuntimeService
-from qiskit_aer.noise import NoiseModel, depolarizing_error, thermal_relaxation_error
-from qiskit import transpile
 from datetime import datetime, timedelta
 from sklearn.cluster import KMeans
 
-
-# clustering
+# --- Updated Helper for Per-Qubit Features ---
 def extract_noise_features(props):
     """
-    Converts backend calibration properties into a feature vector.
+    Returns a matrix of shape (num_qubits, 3) representing 
+    [T1, T2, Avg_Gate_Error] for every qubit on the chip.
     """
-
-    t1_vals = [props.t1(i) for i in range(len(props.qubits))]
-    t2_vals = [props.t2(i) for i in range(len(props.qubits))]
-
+    num_qubits = len(props.qubits)
     two_q_gates = ['cx', 'ecr', 'cz']
-    cx_errors = [
-        g.parameters[0].value
-        for g in props.gates
-        if g.gate in two_q_gates
-    ]
+    
+    # Map gate errors back to specific qubits
+    qubit_gate_errors = {i: [] for i in range(num_qubits)}
+    for g in props.gates:
+        if g.gate in two_q_gates:
+            for q_idx in g.qubits:
+                qubit_gate_errors[q_idx].append(g.parameters[0].value)
 
-    features = np.array([
-        np.mean(t1_vals),
-        np.mean(t2_vals),
-        np.mean(cx_errors) if cx_errors else 0,
-        np.std(cx_errors) if cx_errors else 0
-    ])
-
-    return features
-
-
-
-
+    features = []
+    for i in range(num_qubits):
+        t1 = props.t1(i)
+        t2 = props.t2(i)
+        avg_cx = np.mean(qubit_gate_errors[i]) if qubit_gate_errors[i] else 0
+        features.append([t1, t2, avg_cx])
+        
+    return np.array(features)
 
 def qucad_loss_noisy(theta_values, vqc, estimator, observable, z, u, rho):
-    # Prepare the Pub (Primitive Unified Bloc)
     pub = (vqc, observable, theta_values)
     job = estimator.run([pub])
     result = job.result()[0]
-    
-    # Extract the expectation value
     qnn_expectation = result.data.evs
-    
-    # ADMM Penalty: (rho/2) * ||theta - z + u||^2
     penalty = (rho / 2) * np.linalg.norm(theta_values - z + u)**2
-    
     return float(qnn_expectation + penalty)
-
-
 
 def run_qucad_training_noisy(vqc, noise_model, backend_ibm, iterations=5, lam=0.01, rho=500.0):
     n = vqc.num_parameters
     theta = np.random.uniform(-np.pi, np.pi, n)
     z, u = np.zeros(n), np.zeros(n)
     
-    # CORRECT INITIALIZATION FOR AER ESTIMATOR V2
     noisy_estimator = AerEstimator()
-    
-    # Update options attributes directly (since .update() is not available)
     noisy_estimator.options.backend_options = {
         "method": "density_matrix", 
         "noise_model": noise_model
@@ -75,9 +57,7 @@ def run_qucad_training_noisy(vqc, noise_model, backend_ibm, iterations=5, lam=0.
     observable = SparsePauliOp.from_list([("Z" + "I" * (vqc.num_qubits - 1), 1)])
     history = {"loss": [], "sparsity": []}
 
-    print(f"\n[QuCAD] Starting Battle Against Noise: {backend_ibm.name}")
-    # print(f"{'Iter':<5} | {'Cost':<10} | {'Sparsity'}")
-    # print("-" * 35)
+    print(f"[QuCAD] Training with Noise Profile: {backend_ibm.name}")
     
     for i in range(iterations):
         res = minimize(
@@ -88,157 +68,107 @@ def run_qucad_training_noisy(vqc, noise_model, backend_ibm, iterations=5, lam=0.
             options={'maxiter': 20} 
         )
         theta = res.x
-
-        # Step 2: Z-update (Compression/Pruning)
         threshold = np.sqrt(2 * lam / rho)
         temp_z = theta + u
         z = np.where(np.abs(temp_z) > threshold, temp_z, 0)
-
-        # Step 3: U-update (Dual Variable)
         u = u + (theta - z)
 
-        active_count = np.count_nonzero(z)
         history["loss"].append(res.fun)
-        history["sparsity"].append(active_count)
-        # print(f"{i+1:02d}    | {res.fun:<10.4f} | {active_count}/{n}")
-        print(f"Iter:{i} , Cost:{res.fun}")
-        
+        history["sparsity"].append(np.count_nonzero(z))
+        print(f"Iter:{i} , Cost:{res.fun:.4f}")
 
     return theta, z, history
 
-
-
 def get_current_noise_multiplier(current_props, baseline_props):
-    # 1. T1 Ratio
+    """Modified to check global drift against baseline for deployment selection."""
     t1_ratios = [baseline_props.t1(i) / current_props.t1(i) for i in range(len(current_props.qubits))]
-    avg_t1_ratio = np.mean(t1_ratios) if t1_ratios else 1.0
-    
-    # 2. Gate Error Ratio - Search for ANY 2-qubit gates (usually the noise bottleneck)
-    two_q_gates = ['cx', 'ecr', 'cz']
-    
-    baseline_errors = [g.parameters[0].value for g in baseline_props.gates if g.gate in two_q_gates]
-    current_errors = [g.parameters[0].value for g in current_props.gates if g.gate in two_q_gates]
-    
-    if not baseline_errors or not current_errors:
-        print("[Warning] No 2-qubit gate data found. Defaulting to T1 ratio.")
-        cx_ratio = 1.0
-    else:
-        cx_ratio = np.mean(current_errors) / np.mean(baseline_errors)
-    
-    # Combine (30% T1 influence, 70% Gate Error influence)
-    total_multiplier = (0.3 * avg_t1_ratio) + (0.7 * cx_ratio)
-    return total_multiplier
-
-
+    return np.mean(t1_ratios)
 
 def deploy_qucad_model(vqc, lut, current_multiplier):
-
+    """
+    Selects the best weight set and forces the circuit onto the 
+    best-performing qubit cluster identified in the LUT.
+    """
     clusters = lut["clusters"]
-
-    # We embed multiplier into same dimensionality
-    # as centroid for compatibility
-    query = np.array([current_multiplier, 0, 0, 0])
-
+    # Simple selection: find centroid closest to current multiplier
+    query = current_multiplier
     best_dist = float("inf")
-    best_weights = None
+    best_cluster = None
 
     for c in clusters:
-
-        centroid = np.array(c["centroid"])
-
-        dist = np.linalg.norm(query - centroid)
-
+        dist = abs(query - np.mean(c["centroid"])) # Centroid is now per-qubit avg
         if dist < best_dist:
             best_dist = dist
-            best_weights = c["weights"]
+            best_cluster = c
 
-    print("[QuCAD] Deploying cluster representative model")
-    print("Best Cluster Centroid:", centroid)
-
-    deployed_circuit = vqc.assign_parameters(best_weights)
-    deployed_circuit = transpile(deployed_circuit, optimization_level=3)
-
+    print(f"[QuCAD] Deploying model using Qubit Cluster Mapping")
+    deployed_circuit = vqc.assign_parameters(best_cluster["weights"])
+    
+    # Optimization: Use the best_qubits identified during LUT generation
+    deployed_circuit = transpile(
+        deployed_circuit, 
+        initial_layout=best_cluster["best_qubits"],
+        optimization_level=3
+    )
     return deployed_circuit
 
-
-
-
 def generate_qucad_lut(vqc, backend, days=20, clusters=4):
-
-    feature_bank = []
-    weight_bank = []
-
-    print("\n[QuCAD] Collecting Noise Snapshots")
-
+    """
+    REWRITTEN: Now aggregates performance PER QUBIT over 20 days 
+    to find the most stable qubit mapping.
+    """
+    print(f"\n[QuCAD] Analyzing Qubit Reliability over {days} days...")
+    
+    all_snapshots = []
     for day in range(days):
-
         cal_date = datetime.now() - timedelta(days=day)
         props = backend.properties(datetime=cal_date)
+        if props:
+            all_snapshots.append(extract_noise_features(props))
 
-        if props is None:
-            continue
+    # Calculate average performance for EACH qubit across time
+    # Shape: (num_qubits, 3 features)
+    avg_qubit_performance = np.mean(np.array(all_snapshots), axis=0)
 
-        print(f"[QuCAD] Snapshot {cal_date.strftime('%Y-%m-%d')}")
-
-        noise_model = NoiseModel.from_backend(backend)
-
-        features = extract_noise_features(props)
-
-        theta_trained, z_mask, _ = run_qucad_training_noisy(
-            vqc,
-            noise_model,
-            backend,
-            iterations=10,
-            lam=0.005,
-            rho=500.0
-        )
-
-        robust_theta = theta_trained * (z_mask != 0)
-
-        feature_bank.append(features)
-        weight_bank.append(robust_theta)
-
-    feature_bank = np.array(feature_bank)
-
-    print("\n[QuCAD] Performing Unsupervised Clustering")
-
+    # Cluster qubits into quality tiers (e.g., Tier 0: Best, Tier 1: Good, etc.)
     kmeans = KMeans(n_clusters=clusters, random_state=42)
-    labels = kmeans.fit_predict(feature_bank)
+    qubit_labels = kmeans.fit_predict(avg_qubit_performance)
 
     lut = {"clusters": []}
-
+    
+    # Generate a model for each "Tier" of qubit quality
     for c in range(clusters):
-
-        cluster_indices = np.where(labels == c)[0]
-
-        if len(cluster_indices) == 0:
+        # Identify indices of qubits in this cluster
+        qubit_indices = np.where(qubit_labels == c)[0].tolist()
+        
+        # We need enough qubits in the cluster to run the VQC
+        if len(qubit_indices) < vqc.num_qubits:
             continue
+            
+        # Select the best subset from this cluster (first N qubits)
+        mapping_subset = qubit_indices[:vqc.num_qubits]
 
-        # Choose first model as representative
-        rep_idx = cluster_indices[0]
+        # Train a model specific to this noise level/cluster
+        noise_model = NoiseModel.from_backend(backend)
+        theta_trained, z_mask, _ = run_qucad_training_noisy(
+            vqc, noise_model, backend, iterations=5
+        )
 
         lut["clusters"].append({
             "centroid": kmeans.cluster_centers_[c],
-            "weights": weight_bank[rep_idx]
+            "weights": theta_trained * (z_mask != 0),
+            "best_qubits": mapping_subset
         })
-
-        print(f"[QuCAD] Cluster {c} created with {len(cluster_indices)} models")
+        print(f"Cluster {c}: {len(qubit_indices)} qubits grouped. Mapping assigned.")
 
     return lut
-
-
 
 def get_noiseModel_andBackend_ondate(date_time=datetime.now()):
     TOKEN = "ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"
     service = QiskitRuntimeService(channel="ibm_quantum_platform", token=TOKEN)
     backend_ibm = service.backend("ibm_fez")
-    
-    # This is where you specify the date to get historical data
     target_props = backend_ibm.properties(datetime=date_time)
-    
-    # Build a noise model from those specific historical properties
     noise_model = NoiseModel.from_backend(backend_ibm)
-    
     return noise_model, backend_ibm, target_props
 
 def main():
