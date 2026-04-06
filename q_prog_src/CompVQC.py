@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add current directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from qiskit.circuit import QuantumCircuit, Parameter, ParameterExpression
 from qiskit import qpy, qasm2, qasm3, transpile
 
@@ -9,7 +15,7 @@ from qiskit_algorithms import QAOA
 from qiskit_algorithms.optimizers import COBYLA
 from qiskit.primitives import StatevectorSampler
 
-from q_prog_src.qiskit_circuit_general import *
+from qiskit_circuit_general import *
 # from qiskit_circuit_general import *
 import numpy as np
 from types import SimpleNamespace

@@ -1,6 +1,13 @@
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
+
 import streamlit as st
 from q_prog_src import QBound
-from . import Home as home
+import Home as home
 from q_prog_src import qiskit_circuit_general, CompVQC, QuCAD
 from qiskit import QuantumCircuit
 from qiskit_ibm_runtime.fake_provider import FakeFez, FakeMarrakesh, FakeTorino

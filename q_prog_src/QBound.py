@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add current directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 from qiskit_ibm_runtime import QiskitRuntimeService
 from qiskit import QuantumCircuit
 from qiskit_aer.noise import NoiseModel
@@ -8,7 +14,7 @@ from qiskit_ibm_runtime.fake_provider import FakeFez
 from qiskit import qpy
 
 
-from .qiskit_circuit_general import *
+from qiskit_circuit_general import *
 
 import torch
 from torch import nn

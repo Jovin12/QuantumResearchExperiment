@@ -1,7 +1,14 @@
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import streamlit as st
 from streamlit_flow import streamlit_flow
 from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
 from streamlit_flow.state import StreamlitFlowState
+from q_prog_src.execute_workflow import execute
 
 # ============================================
 # PAGE CONFIGURATION (must be first command)
@@ -22,7 +29,7 @@ def inject_custom_css():
     
     /* Global override for Streamlit's native dark mode - maintain dark luxury feel */
     .stApp {
-        background: radial-gradient(circle at 20% 30%, #0a0a0a, #050505);
+        background: radial-gradient(circle at 20% 30%, #106e3f, #cccaca);
     }
     
     /* Force all text to use luxury font family */
@@ -30,22 +37,50 @@ def inject_custom_css():
         font-family: 'Inter', 'Montserrat', sans-serif !important;
     }
     
-    /* Glassmorphism effect for columns - frosted glass with blur and thin gold border */
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(1),
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(2) {
-        background: rgba(18, 18, 24, 0.55) !important;
+    # /* Glassmorphism effect for columns - frosted glass with blur and thin gold border */
+    # div[data-testid="stHorizontalBlock"] > div:nth-of-type(1),
+    # div[data-testid="stHorizontalBlock"] > div:nth-of-type(2) {
+    #     background: rgba(18, 18, 24, 0.55) !important;
+    #     backdrop-filter: blur(12px);
+    #     -webkit-backdrop-filter: blur(12px);
+    #     border-radius: 28px;
+    #     border: 1px solid rgba(212, 175, 55, 0.25);
+    #     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    #     transition: all 0.3s ease;
+    #     padding: 1.2rem;
+    # }
+                
+        /* Glassmorphism for Column 1 (Canvas) */
+    div[data-testid="stHorizontalBlock"] > div:nth-of-type(1) {
+        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
         backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
         border-radius: 28px;
-        border: 1px solid rgba(212, 175, 55, 0.25);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-        transition: all 0.3s ease;
+        border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
         padding: 1.2rem;
     }
     
+    /* Glassmorphism for Column 2 (Node Palette) */
+    div[data-testid="stHorizontalBlock"] > div:nth-of-type(2) {
+        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
+        backdrop-filter: blur(12px);
+        border-radius: 28px;
+        border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
+        padding: 1.2rem;
+    }
+                
+    div[data-testid="stHorizontalBlock"] > div:nth-of-type(3) {
+        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
+        backdrop-filter: blur(12px);
+        border-radius: 28px;
+        border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
+        padding: 1.2rem;
+    }
+
+    
     /* Hover effect for glass panels */
     div[data-testid="stHorizontalBlock"] > div:nth-of-type(1):hover,
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(2):hover {
+    div[data-testid="stHorizontalBlock"] > div:nth-of-type(2):hover,
+    div[data-testid="stHorizontalBlock"] > div:nth-of-type(3):hover {
         border-color: rgba(0, 229, 255, 0.4);
         box-shadow: 0 12px 40px rgba(0, 229, 255, 0.08);
     }
@@ -57,7 +92,7 @@ def inject_custom_css():
         letter-spacing: 0.3px;
         transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
         border: none;
-        background: linear-gradient(135deg, rgba(30,30,40,0.9), rgba(20,20,28,0.95));
+        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
         backdrop-filter: blur(4px);
         color: #E0E0E0;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
@@ -67,10 +102,6 @@ def inject_custom_css():
     
     div[data-testid="stButton"] button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 0 12px rgba(0, 229, 255, 0.6), 0 6px 12px rgba(0,0,0,0.3);
-        background: linear-gradient(135deg, rgba(40,40,55,0.95), rgba(30,30,45,0.98));
-        color: #00E5FF;
-        border: 1px solid rgba(0, 229, 255, 0.4);
     }
     
     /* Category expander styling - luxury clean */
@@ -145,6 +176,12 @@ def inject_custom_css():
     .stVerticalBlock {
         gap: 0.8rem;
     }
+                
+    div[data-testid="stElementContainer"] .st-key-btn_input button {
+        background: linear-gradient(135deg, #aa6f20, #d4af37);
+        color: white;
+        border: none;
+    }
     
     </style>
     """, unsafe_allow_html=True)
@@ -162,6 +199,8 @@ NODE_COLORS = {
     "simple": "linear-gradient(135deg, #2c6e6e, #3fa0a0)",       # cyan-teal
     "transpile": "linear-gradient(135deg, #aa4f2e, #dd7a4a)"      # sunset orange
 }
+
+
 
 def get_node_style(node_type, color_gradient):
     """Return a style dict with glowing border and gradient background"""
@@ -195,13 +234,15 @@ def flow_page():
     # ============================================
     with col2:
         st.markdown("<h2 style='text-align:center; margin-bottom:0;'>✨ QUANTUM NODES</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center; color:#aaa; font-size:0.8rem;'>Drag & drop to canvas</p>", unsafe_allow_html=True)
+        # st.markdown("<p style='text-align:center; color:#aaa; font-size:0.8rem;'>Drag & drop to canvas</p>", unsafe_allow_html=True)
         st.divider()
         
         # Helper function to prevent duplicates by checking ID, but with quantum node styling
         def add_unique_node(node_id, content, color_gradient, node_type='default', label=None):
             # Remove existing node with same ID to avoid duplicates
             st.session_state.flow_state.nodes = [n for n in st.session_state.flow_state.nodes if n.id != node_id]
+
+            # print(color_gradient)
             
             # Create node with quantum gradient style
             new_node = StreamlitFlowNode(
@@ -221,8 +262,9 @@ def flow_page():
         st.markdown("**⚛️ INPUT QUANTUM STATES**")
         st.divider()
         c1, c2 = st.columns(2)
+        
         with c1:
-            if st.button("🔮 Circuit Node", key="btn_input_lux"):
+            if st.button("🔮 Circuit Node", key="btn_input"):
                 add_unique_node("input_node", "Quantum Circuit", NODE_COLORS["input"], "input", "CIRCUIT")
         with c2:
             if st.button("🎛️ Backend Node", key="btn_backend_lux"):
@@ -238,8 +280,10 @@ def flow_page():
         with c2:
             if st.button("QuCAD", key="btn_qucad_lux"):
                 add_unique_node("qucad_node", "QuCAD", NODE_COLORS["qucad"])
-        if st.button("⚡ NoCompression", key="btn_nocomp_lux"):
-            add_unique_node("nocomp_node", "NoCompression", NODE_COLORS["nocomp"])
+        c2 = st.columns([1])[0]  # Single column for NoCompression
+        with c2:
+            if st.button("⚡ NoCompression", key="btn_nocomp_lux"):
+                add_unique_node("nocomp_node", "NoCompression", NODE_COLORS["nocomp"])
         
         # ---- FIDELITY SECTION ----
         st.markdown("**📊 FIDELITY & ERROR BOUNDS**")
@@ -255,8 +299,10 @@ def flow_page():
         # ---- TRANSPILATION SECTION ----
         st.markdown("**⚙️ TRANSPILATION ENGINE**")
         st.divider()
-        if st.button("🚀 Transpile Node", key="btn_transpile_lux"):
-            add_unique_node("transpile_node", "Transpiler", NODE_COLORS["transpile"])
+        c1 = st.columns([1])[0]  # Single column for Transpiler
+        with c1:
+            if st.button("🚀 Transpile Node", key="btn_transpile_lux"):
+                add_unique_node("transpile_node", "Transpiler", NODE_COLORS["transpile"])
         
         st.caption("✨ Quantum nodes glow with electric cyan borders")
     
@@ -322,7 +368,7 @@ def flow_page():
         
         # --- Action Buttons for Flow Management (Luxury Pill Style)---
         st.divider()
-        act_c1, act_c2, act_c3 = st.columns([1, 1, 2])
+        act_c1, act_c2, act_c3,act_c4 = st.columns([1, 1, 1, 1])
         
         # Get current nodes dictionary for auto-connect logic
         nodes_dict = {n.id: n for n in st.session_state.flow_state.nodes}
@@ -363,6 +409,9 @@ def flow_page():
             st.session_state.flow_state = StreamlitFlowState([], [])
             st.rerun()
         
+        if act_c3.button(" 🏃 RUN SIMULATION", use_container_width = True, help = 'Run your flow chart with Backend' ):
+            st.success("Swimming")
+            execute()
         # Optional: display backend info for status
         st.caption(f"🎛️ Active Quantum Backend: **{st.session_state.backend_name}** | Nodes: {len(st.session_state.flow_state.nodes)} | Edges: {len(st.session_state.flow_state.edges)}")
 
