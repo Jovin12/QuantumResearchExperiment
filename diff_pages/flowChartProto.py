@@ -450,9 +450,11 @@ def flow_page():
         
         with act_c3:
             if act_c3.button(" 🏃 RUN SIMULATION", use_container_width = True, help = 'Run your flow chart with Backend', key = 'btn_run' ):
-                st.success("Swimming")
-                execute()
-                t.sleep(5)
+                st.session_state.run = True
+        if st.session_state.get('run', False):
+            st.success("Swimming")
+            execute()
+            t.sleep(5)
         # Optional: display backend info for status
         st.caption(f"🎛️ Active Quantum Backend: **{st.session_state.backend_name}** | Nodes: {len(st.session_state.flow_state.nodes)} | Edges: {len(st.session_state.flow_state.edges)}")
 
