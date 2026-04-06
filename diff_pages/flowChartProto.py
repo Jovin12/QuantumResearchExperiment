@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import time as t
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -56,24 +57,24 @@ def inject_custom_css():
         backdrop-filter: blur(12px);
         border-radius: 28px;
         border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
-        padding: 1.2rem;
+        # padding: 1.2rem;
     }
     
     /* Glassmorphism for Column 2 (Node Palette) */
     div[data-testid="stHorizontalBlock"] > div:nth-of-type(2) {
-        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
+        background: rgba(40, 30, 10, 0.3) !important; /* Gold tint background */
         backdrop-filter: blur(12px);
         border-radius: 28px;
         border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
-        padding: 1.2rem;
+        # padding: 1.2rem;
     }
                 
     div[data-testid="stHorizontalBlock"] > div:nth-of-type(3) {
-        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
+        background: rgba(40, 30, 10, 0.3) !important; /* Gold tint background */
         backdrop-filter: blur(12px);
         border-radius: 28px;
         border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
-        padding: 1.2rem;
+        # padding: 1.2rem;
     }
 
     
@@ -92,18 +93,50 @@ def inject_custom_css():
         letter-spacing: 0.3px;
         transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
         border: none;
-        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
+        # background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
         backdrop-filter: blur(4px);
         color: #E0E0E0;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        padding: 0.5rem 1.2rem;
+        padding: 2rem 1.2rem;
         width: 100%;
     }
     
     div[data-testid="stButton"] button:hover {
-        transform: translateY(-2px);
+        transform: translateY(-4px);
+    }    
+    div.st-key-btn_input button {
+        background: linear-gradient(135deg, #0b2b5e, #1a4a8a) !important;
+        color: white !important;
+    }
+    div.st-key-btn_backend_lux button {
+        background: linear-gradient(135deg, #2a1e5a, #4a2e8a) !important;
+        color: white !important;
     }
     
+    div.st-key-btn_compress_lux button {
+        background: linear-gradient(135deg, #aa6f20, #d4af37) !important;
+        color: white !important;
+    }
+    
+    div.st-key-btn_qucad_lux button {
+        background: linear-gradient(135deg, #d4af37, #f5cb5c) !important;
+    }
+    
+    div.st-key-btn_nocomp_lux button, div.st-key-btn_clear button {
+        background: linear-gradient(135deg, #8b5a2b, #c97e3a) !important;
+    }
+    
+    div.st-key-btn_qbound_lux button, div.st-key-btn_run button {
+        background: linear-gradient(135deg, #1b6b4a, #2d9c6e) !important; /* emerald */
+    }
+    
+    div.st-key-btn_simple_lux button {
+        background: linear-gradient(135deg, #2c6e6e, #3fa0a0) !important; /* cyan-teal */
+    }
+    
+    div.st-key-btn_transpile_lux button, div.st-key-btn_autoconnect button {
+        background: linear-gradient(135deg, #aa4f2e, #dd7a4a) !important; /* sunset orange */
+    }    
     /* Category expander styling - luxury clean */
     .streamlit-expanderHeader {
         font-size: 1.1rem;
@@ -227,7 +260,7 @@ def flow_page():
         st.session_state.backend_name = "ibm_fez"
     
     # Layout: Flow Canvas (col1) and Node Palette (col2)
-    col1, col2 = st.columns([4, 1.5])
+    col1, col2 = st.columns([4, 1.75])
     
     # ============================================
     # RIGHT COLUMN: NODE PALETTE (Glass + Expanders)
@@ -260,51 +293,55 @@ def flow_page():
         
         # ---- INPUT NODES SECTION ----
         st.markdown("**⚛️ INPUT QUANTUM STATES**")
-        st.divider()
+        
         c1, c2 = st.columns(2)
         
         with c1:
-            if st.button("🔮 Circuit Node", key="btn_input"):
+            if st.button("🔮 Circuit Node", key="btn_input", use_container_width=True):
                 add_unique_node("input_node", "Quantum Circuit", NODE_COLORS["input"], "input", "CIRCUIT")
         with c2:
-            if st.button("🎛️ Backend Node", key="btn_backend_lux"):
+            if st.button("🎛️ Backend Node", key="btn_backend_lux", use_container_width=True):
                 add_unique_node("backend_node", "Quantum Backend", NODE_COLORS["backend"], "input", "BACKEND")
         
+        st.divider()
         # ---- COMPRESSION SECTION ----
         st.markdown("**🌀 COMPRESSION & OPTIMIZATION**")
-        st.divider()
+        
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("CompressVQC", key="btn_compress_lux"):
+            if st.button("Compress VQC", key="btn_compress_lux", use_container_width=True):
                 add_unique_node("compress_node", "CompressVQC", NODE_COLORS["compress"])
         with c2:
-            if st.button("QuCAD", key="btn_qucad_lux"):
+            if st.button("QuCAD", key="btn_qucad_lux", use_container_width=True):
                 add_unique_node("qucad_node", "QuCAD", NODE_COLORS["qucad"])
         c2 = st.columns([1])[0]  # Single column for NoCompression
         with c2:
-            if st.button("⚡ NoCompression", key="btn_nocomp_lux"):
+            if st.button("⚡ NoCompression", key="btn_nocomp_lux", use_container_width=True):
                 add_unique_node("nocomp_node", "NoCompression", NODE_COLORS["nocomp"])
-        
+
+        st.divider()
         # ---- FIDELITY SECTION ----
         st.markdown("**📊 FIDELITY & ERROR BOUNDS**")
-        st.divider()
+        
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("QuBound", key="btn_qbound_lux"):
+            if st.button("QuBound", key="btn_qbound_lux", use_container_width=True):
                 add_unique_node("qbound_node", "QuBound", NODE_COLORS["qbound"])
         with c2:
-            if st.button("Simple Fidelity", key="btn_simple_lux"):
+            if st.button("Simple Fidelity", key="btn_simple_lux", use_container_width=True):
                 add_unique_node("simple_node", "SimpleFid", NODE_COLORS["simple"])
         
+        st.divider()
         # ---- TRANSPILATION SECTION ----
         st.markdown("**⚙️ TRANSPILATION ENGINE**")
-        st.divider()
+        
         c1 = st.columns([1])[0]  # Single column for Transpiler
         with c1:
-            if st.button("🚀 Transpile Node", key="btn_transpile_lux"):
+            if st.button("🚀 Transpile Node", key="btn_transpile_lux", use_container_width=True):
                 add_unique_node("transpile_node", "Transpiler", NODE_COLORS["transpile"])
         
-        st.caption("✨ Quantum nodes glow with electric cyan borders")
+        st.divider()
+        # st.caption("✨ Quantum nodes glow with electric cyan borders")
     
     # ============================================
     # LEFT COLUMN: FLOW CANVAS (Glass)
@@ -368,50 +405,54 @@ def flow_page():
         
         # --- Action Buttons for Flow Management (Luxury Pill Style)---
         st.divider()
-        act_c1, act_c2, act_c3,act_c4 = st.columns([1, 1, 1, 1])
+        act_c1, act_c2, act_c3,act_c4 = st.columns([1, 1, 1, 0.5])
         
         # Get current nodes dictionary for auto-connect logic
         nodes_dict = {n.id: n for n in st.session_state.flow_state.nodes}
         
-        if act_c1.button("✨ AUTOCONNECT", use_container_width=True, help="Intelligently connect quantum workflow nodes"):
-            new_edges = []
-            
-            # Identify key node categories
-            input_n = nodes_dict.get("input_node")
-            backend_n = nodes_dict.get("backend_node")
-            comp_n = next((nodes_dict[i] for i in ["compress_node", "qucad_node", "nocomp_node"] if i in nodes_dict), None)
-            fid_n = next((nodes_dict[i] for i in ["qbound_node", "simple_node"] if i in nodes_dict), None)
-            transpile_n = nodes_dict.get("transpile_node")
-            
-            # Build main quantum pipeline chain
-            if input_n:
-                current_source = input_n.id
-                if comp_n:
-                    new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{comp_n.id}", current_source, comp_n.id, animated=True, style={"stroke": "#00E5FF", "strokeWidth": 2}))
-                    current_source = comp_n.id
-                if fid_n:
-                    new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{fid_n.id}", current_source, fid_n.id, animated=True, style={"stroke": "#D4AF37", "strokeWidth": 2}))
-                    current_source = fid_n.id
-                if transpile_n:
-                    new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{transpile_n.id}", current_source, transpile_n.id, animated=True, style={"stroke": "#00E5FF", "strokeWidth": 2}))
-            
-            # Backend connections to noise-aware nodes
-            if backend_n:
-                if "qucad_node" in nodes_dict:
-                    new_edges.append(StreamlitFlowEdge("backend-to-qucad", backend_n.id, "qucad_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
-                if "qbound_node" in nodes_dict:
-                    new_edges.append(StreamlitFlowEdge("backend-to-qbound", backend_n.id, "qbound_node", animated=True, label="Error Data", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
-            
-            st.session_state.flow_state.edges = new_edges
-            st.rerun()
+        with act_c1:
+            if st.button("✨ AUTOCONNECT", use_container_width=True, help="Intelligently connect quantum workflow nodes", key = "btn_autoconnect"):
+                new_edges = []
+                
+                # Identify key node categories
+                input_n = nodes_dict.get("input_node")
+                backend_n = nodes_dict.get("backend_node")
+                comp_n = next((nodes_dict[i] for i in ["compress_node", "qucad_node", "nocomp_node"] if i in nodes_dict), None)
+                fid_n = next((nodes_dict[i] for i in ["qbound_node", "simple_node"] if i in nodes_dict), None)
+                transpile_n = nodes_dict.get("transpile_node")
+                
+                # Build main quantum pipeline chain
+                if input_n:
+                    current_source = input_n.id
+                    if comp_n:
+                        new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{comp_n.id}", current_source, comp_n.id, animated=True, style={"stroke": "#00E5FF", "strokeWidth": 2}))
+                        current_source = comp_n.id
+                    if fid_n:
+                        new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{fid_n.id}", current_source, fid_n.id, animated=True, style={"stroke": "#D4AF37", "strokeWidth": 2}))
+                        current_source = fid_n.id
+                    if transpile_n:
+                        new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{transpile_n.id}", current_source, transpile_n.id, animated=True, style={"stroke": "#00E5FF", "strokeWidth": 2}))
+                
+                # Backend connections to noise-aware nodes
+                if backend_n:
+                    if "qucad_node" in nodes_dict:
+                        new_edges.append(StreamlitFlowEdge("backend-to-qucad", backend_n.id, "qucad_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
+                    if "qbound_node" in nodes_dict:
+                        new_edges.append(StreamlitFlowEdge("backend-to-qbound", backend_n.id, "qbound_node", animated=True, label="Error Data", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
+                
+                st.session_state.flow_state.edges = new_edges
+                st.rerun()
         
-        if act_c2.button("🗑️ CLEAR CANVAS", use_container_width=True, help="Remove all nodes and edges"):
-            st.session_state.flow_state = StreamlitFlowState([], [])
-            st.rerun()
+        with act_c2:
+            if st.button("🗑️ CLEAR CANVAS", use_container_width=True, help="Remove all nodes and edges", key = 'btn_clear'):
+                st.session_state.flow_state = StreamlitFlowState([], [])
+                st.rerun()
         
-        if act_c3.button(" 🏃 RUN SIMULATION", use_container_width = True, help = 'Run your flow chart with Backend' ):
-            st.success("Swimming")
-            execute()
+        with act_c3:
+            if act_c3.button(" 🏃 RUN SIMULATION", use_container_width = True, help = 'Run your flow chart with Backend', key = 'btn_run' ):
+                st.success("Swimming")
+                execute()
+                t.sleep(5)
         # Optional: display backend info for status
         st.caption(f"🎛️ Active Quantum Backend: **{st.session_state.backend_name}** | Nodes: {len(st.session_state.flow_state.nodes)} | Edges: {len(st.session_state.flow_state.edges)}")
 
