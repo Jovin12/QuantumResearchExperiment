@@ -122,7 +122,7 @@ def execute(progress_container):
             # Get opt_level from slider in flowChartProto
             level = st.session_state.get('opt_level', 1)
             t_bar.progress(50, text=f"Transpiling (Level {level})...")
-            current_qc = qiskit_circuit_general.transpile_optim(current_qc, level)
+            current_qc = qiskit_circuit_general.transpile_optim(current_qc, provider,level)
             t_bar.progress(100, text="Transpilation Finished")
         else:
             t_bar.progress(100, text="Transpilation Skipped")

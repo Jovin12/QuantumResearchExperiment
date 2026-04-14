@@ -27,16 +27,7 @@ def qasmFile_toCircuit(file):
         raise RuntimeError(f"Could not load uploaded circuit file: {exc}") from exc
     
 def transpile_optim(qc, backend, optim):
-    backends = {
-        "ibm_fez": FakeFez(),          
-        "ibm_marrakesh": FakeMarrakesh(), 
-        "ibm_torino": FakeTorino() 
-    }
-
-    provider = backends[backend]
-
-
-    optim_qc = transpile(qc, backend=provider, optimization_level=optim,basis_gates=['sx', 'rz', 'cx', 'id'])
+    optim_qc = transpile(qc, backend=backend, optimization_level=optim,basis_gates=['sx', 'rz', 'cx', 'id'])
     return optim_qc
 
 def simpleFidelityEstimator(qc):

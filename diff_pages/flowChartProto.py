@@ -452,6 +452,7 @@ def flow_page():
         with act_c2:
             if st.button("🗑️ CLEAR CANVAS", use_container_width=True, help="Remove all nodes and edges", key = 'btn_clear'):
                 st.session_state.flow_state = StreamlitFlowState([], [])
+                st.session_state.clear()
                 st.rerun()
         
         with act_c3:

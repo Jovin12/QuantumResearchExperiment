@@ -18,6 +18,7 @@ css = """
 def home_page():
     st.set_page_config(
         page_title="Home",
+        layout="wide",
     )
 
     with st.container(border = True, key = "green_container"):
