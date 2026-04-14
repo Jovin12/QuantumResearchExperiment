@@ -8,7 +8,7 @@ from datetime import datetime
 from qiskit import transpile
 
 # Import your quantum backend logic
-from q_prog_src import QBound, qiskit_circuit_general, CompVQC, QuCAD
+from q_prog_src import test_QBound, qiskit_circuit_general, CompVQC, QuCAD
 from qiskit_ibm_runtime.fake_provider import FakeFez, FakeMarrakesh, FakeTorino
 
 class NumpyEncoder(json.JSONEncoder):
@@ -18,18 +18,24 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, (np.int32, np.int64)): return int(obj)
         return super(NumpyEncoder, self).default(obj)
 
-def execute():
+def execute(progress_container):
     """
     Translates the Flowchart UI state into the execution logic 
     found in the original QExperiment_showcase submit button.
+    progress_container: Streamlit container to display progress bars
     """
+    st.set_page_config(layout = "wide")
     
     # 1. DATA VALIDATION: Ensure we have nodes and a circuit
     if 'flow_state' not in st.session_state or not st.session_state.flow_state.nodes:
         st.error("Your canvas is empty! Add nodes to the workflow.")
         return
-
-    if 'circuit_upload' not in st.session_state or st.session_state.circuit_upload is None:
+    
+    uploaded_file = st.session_state.get('uploaded_file') or st.session_state.get('circuit_upload')
+    if uploaded_file is not None:
+        current_qc = qiskit_circuit_general.qasmFile_toCircuit(uploaded_file)
+        st.session_state.main_qc = current_qc
+    else:
         st.error("Please select the Circuit Node and upload a .qpy file first.")
         time.sleep(5)
         return
@@ -48,11 +54,10 @@ def execute():
     provider = backends.get(backend_name, FakeFez())
 
     # Initialize working variables
-    current_qc = qiskit_circuit_general.qasmFile_toCircuit(st.session_state.circuit_upload)
     fidelity_result = 0.0
 
-    # 3. EXECUTION VISUALS (Progress Bars)
-    with st.container(border=True):
+    # 3. EXECUTION VISUALS (Progress Bars) - use persistent container passed in
+    with progress_container.container(border=True):
         st.markdown(f"### 🚀 Running Workflow on **{backend_name}**")
         c_bar = st.progress(0, text="Compression Phase")
         f_bar = st.progress(0, text="Fidelity Phase")
@@ -74,19 +79,21 @@ def execute():
             c_bar.progress(20, text="Initializing QuCAD...")
             # Logic for QuCAD from showcase
             noise_model, backend_ibm, target_props = QuCAD.get_noiseModel_andBackend_ondate()
+            c_bar.progress(40, text="Getting QuCAD Training Data...")
             
             # Note: For fresh training logic, you can add state checks here
             final_theta, final_mask, stats = QuCAD.run_qucad_training_noisy(
                 current_qc, noise_model, backend_ibm, iterations=10, lam=0.005, rho=500.0
             )
             qucad_bank = QuCAD.generate_qucad_lut(current_qc, backend_ibm)
+            c_bar.progress(60, text="Generating Lookup Table ...")
             
             # Apply drift/multiplier logic
             # Using datetime.now() as default since flowchart date picker wasn't explicit
             target_date = datetime.now() 
             _, _, props_future = QuCAD.get_noiseModel_andBackend_ondate(target_date)
             multiplier = QuCAD.get_current_noise_multiplier(props_future, backend_ibm.properties())
-            
+            c_bar.progress(80, text="Applying Drift/Multiplier...")
             current_qc = QuCAD.deploy_qucad_model(current_qc, qucad_bank, multiplier)
             c_bar.progress(100, text="QuCAD Compression Finished")
         else:
@@ -96,7 +103,7 @@ def execute():
         if "qbound_node" in nodes_present:
             f_bar.progress(50, text="Calculating QuBound...")
             # We use None for date to default to current backend noise
-            fidelity_result, model_jit = QBound.call_QuBound(current_qc, provider, None)
+            fidelity_result, model_jit = test_QBound.call_QuBound(current_qc, provider, None)
             st.session_state.model = model_jit # Save for DB upload
             f_bar.progress(100, text="QuBound Finished")
             
@@ -120,12 +127,9 @@ def execute():
         else:
             t_bar.progress(100, text="Transpilation Skipped")
 
-    # 4. RESULTS DISPLAY
-    st.success(f"Execution Complete! Fidelity Score: {fidelity_result}")
-    st.pyplot(qiskit_circuit_general.display_circuit(current_qc))
-    with st.spinner('Waiting for something...'):
-        time.sleep(2)
     
+    # st.session_state.clear()
     # Store results back into session state for database forms
     st.session_state.fidelity_error_bound = fidelity_result
     st.session_state.main_qc = current_qc
+    st.session_state.execution_complete = True

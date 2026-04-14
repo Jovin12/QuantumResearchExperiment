@@ -10,6 +10,7 @@ from streamlit_flow import streamlit_flow
 from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
 from streamlit_flow.state import StreamlitFlowState
 from q_prog_src.execute_workflow import execute
+from q_prog_src import qiskit_circuit_general
 
 # ============================================
 # PAGE CONFIGURATION (must be first command)
@@ -258,6 +259,10 @@ def flow_page():
         st.session_state.flow_state = StreamlitFlowState([], [])
     if 'backend_name' not in st.session_state:
         st.session_state.backend_name = "ibm_fez"
+    if 'should_execute' not in st.session_state:
+        st.session_state.should_execute = False
+    if 'execution_complete' not in st.session_state:
+        st.session_state.execution_complete = False
     
     # Layout: Flow Canvas (col1) and Node Palette (col2)
     col1, col2 = st.columns([4, 1.75])
@@ -376,8 +381,9 @@ def flow_page():
             st.divider()
             st.markdown(f"<h3 style='color:#D4AF37;'>⚙️ {node_id.upper()} CONFIGURATION</h3>", unsafe_allow_html=True)
             
-            if "input_node" == node_id:
-                st.file_uploader("Upload Quantum Circuit (.qpy)", type="qpy", key="circuit_upload")
+            if "input_node" == node_id:    
+                st.session_state.uploaded_file = st.file_uploader("Upload Quantum Circuit (.qpy)", type="qpy", key="circuit_upload")
+
                 st.caption("Accepts QPY format from Qiskit")
             
             elif "backend_node" == node_id:
@@ -394,11 +400,11 @@ def flow_page():
                     st.success("Previous QNN weights will be reused.")
             
             elif "transpile_node" == node_id:
-                opt_level = st.slider("Qiskit Optimization Level", 0, 3, 1, help="Higher = more aggressive transpilation")
-                st.write(f"Optimization Level: {opt_level}")
+                st.session_state.opt_level = st.slider("Qiskit Optimization Level", 0, 3, 1, help="Higher = more aggressive transpilation")
+                st.write(f"Optimization Level: {st.session_state.opt_level}")
             
             elif "qbound_node" == node_id:
-                st.slider("Error Tolerance", 0.01, 0.5, 0.05, step=0.01, help="Bound on allowed infidelity")
+                st.session_state.error_tolerance = st.slider("Error Tolerance", 0.01, 0.5, 0.05, step=0.01, help="Bound on allowed infidelity")
             
             elif "compress_node" == node_id:
                 st.checkbox("Preserve original gate structure", value=True)
@@ -449,12 +455,35 @@ def flow_page():
                 st.rerun()
         
         with act_c3:
-            if act_c3.button(" 🏃 RUN SIMULATION", use_container_width = True, help = 'Run your flow chart with Backend', key = 'btn_run' ):
-                st.session_state.run = True
-        if st.session_state.get('run', False):
-            st.success("Swimming")
-            execute()
-            t.sleep(5)
+            if act_c3.button(" 🏃 RUN SIMULATION", use_container_width = True, help = 'Run your flow chart with Backend', key = 'btn_run'):
+                st.session_state.should_execute = True
+        
+        # Create persistent containers for results
+        progress_placeholder = st.empty()
+        results_placeholder = st.empty()
+        
+        # Only execute if flag is set and not yet complete
+        if st.session_state.get('should_execute', False) and not st.session_state.get('execution_complete', False):
+            st.session_state.execution_complete = False
+            execute(progress_placeholder)
+        
+        # Display results after execution completes
+        if st.session_state.get('execution_complete', False):
+            with results_placeholder.container():
+                st.divider()
+                st.success(f"✅ Execution Complete! Fidelity Score: {st.session_state.fidelity_error_bound:.6f}")
+                st.subheader("Circuit Diagram")
+                try:
+                    fig = qiskit_circuit_general.display_circuit(st.session_state.main_qc)
+                    st.pyplot(fig)
+                except Exception as e:
+                    st.error(f"Could not display circuit: {e}")
+                
+                # Reset flags for next run
+                if st.button("🔄 Run Again", key="btn_run_again"):
+                    st.session_state.should_execute = False
+                    st.session_state.execution_complete = False
+                    st.rerun()
         # Optional: display backend info for status
         st.caption(f"🎛️ Active Quantum Backend: **{st.session_state.backend_name}** | Nodes: {len(st.session_state.flow_state.nodes)} | Edges: {len(st.session_state.flow_state.edges)}")
 

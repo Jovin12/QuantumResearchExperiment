@@ -1,3 +1,4 @@
+import io
 import qiskit
 from qiskit import QuantumCircuit
 from qiskit import qasm2, qasm3, qpy
@@ -9,15 +10,21 @@ def display_circuit(qc: QuantumCircuit):
     return qc.draw("mpl")
 
 def qasmFile_toCircuit(file):
-    # qpy_content = file.read().decode("utf-8")
-    # qc = qpy.load(qpy_content)[0]
-    # qasm_content = file.read()
+    """Load a Qiskit QPY or QASM file-like object into a QuantumCircuit."""
+    try:
+        if isinstance(file, (bytes, bytearray)):
+            file_obj = io.BytesIO(file)
+        else:
+            file_obj = file
+            if hasattr(file_obj, "seek"):
+                file_obj.seek(0)
 
-    # if "OPENQASM 3" in qasm_content[:100]:
-    #     return qasm3.loads(qasm_content)
-    # else:
-    #     return qasm2.loads(qasm_content)
-    return qpy.load(file)[0]
+        qc = qpy.load(file_obj)[0]
+        return qc
+    except Exception as exc:
+        if hasattr(file, "seek"):
+            file.seek(0)
+        raise RuntimeError(f"Could not load uploaded circuit file: {exc}") from exc
     
 def transpile_optim(qc, backend, optim):
     backends = {
