@@ -444,7 +444,7 @@ def flow_page():
                     if "qucad_node" in nodes_dict:
                         new_edges.append(StreamlitFlowEdge("backend-to-qucad", backend_n.id, "qucad_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
                     if "qbound_node" in nodes_dict:
-                        new_edges.append(StreamlitFlowEdge("backend-to-qbound", backend_n.id, "qbound_node", animated=True, label="Error Data", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
+                        new_edges.append(StreamlitFlowEdge("backend-to-qbound", backend_n.id, "qbound_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
                 
                 st.session_state.flow_state.edges = new_edges
                 st.rerun()

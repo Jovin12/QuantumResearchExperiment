@@ -103,9 +103,14 @@ def execute(progress_container):
         if "qbound_node" in nodes_present:
             f_bar.progress(50, text="Calculating QuBound...")
             # We use None for date to default to current backend noise
-            fidelity_result, model_jit = test_QBound.call_QuBound(current_qc, provider, None)
-            st.session_state.model = model_jit # Save for DB upload
-            f_bar.progress(100, text="QuBound Finished")
+            qbound_result = test_QBound.call_QuBound(current_qc, provider)
+            if qbound_result is None:
+                st.error("❌ QuBound failed: Authentication error. Please check your IBM Quantum token.")
+                f_bar.progress(100, text="QuBound Failed")
+            else:
+                fidelity_result, model_jit = qbound_result
+                st.session_state.model = model_jit # Save for DB upload
+                f_bar.progress(100, text="QuBound Finished")
             
         elif "simple_node" in nodes_present:
             f_bar.progress(50, text="Calculating Simple Fidelity...")
