@@ -37,7 +37,8 @@ def execute(progress_container):
         st.session_state.main_qc = current_qc
     else:
         st.error("Please select the Circuit Node and upload a .qpy file first.")
-        time.sleep(5)
+        # st.session_state.should_execute = False
+        # time.sleep(5)
         return
 
     # Map nodes by ID for easy lookup

@@ -472,7 +472,10 @@ def flow_page():
         if st.session_state.get('execution_complete', False):
             with results_placeholder.container():
                 st.divider()
-                st.success(f"✅ Execution Complete! Fidelity Score: {st.session_state.fidelity_error_bound:.6f}")
+                # st.success(f"✅ Execution Complete! Fidelity Score: {st.session_state.fidelity_error_bound:.6f}")
+                st.write(st.session_state.fidelity_error_bound)
+                preds = st.session_state.fidelity_error_bound['prediction']
+                st.write(preds)
                 st.subheader("Circuit Diagram")
                 try:
                     fig = qiskit_circuit_general.display_circuit(st.session_state.main_qc)

@@ -160,6 +160,7 @@ def generate_qucad_lut(vqc, backend, days=20, clusters=4):
             "best_qubits": mapping_subset
         })
         print(f"Cluster {c}: {len(qubit_indices)} qubits grouped. Mapping assigned.")
+        print(lut)
 
     return lut
 
