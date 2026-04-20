@@ -11,6 +11,7 @@ from scipy.stats import norm
 import statsmodels.api as sm
 from matplotlib import pyplot as plt
 from qiskit_ibm_runtime.fake_provider import FakeFez
+import streamlit as st
 
 # --- Model Definition ---
 class QuPred(nn.Module):
@@ -126,7 +127,7 @@ def train_loop(x_train, y_train):
     return model
 
 # --- Core QuBound Function ---
-def call_QuBound(qc, fake_backend, token="ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"):
+def call_QuBound(qc, fake_backend, token=st.secrets["YOUR_TOKEN"]):
     try:
         # Initialize service with provided token or saved credentials
         if token:
@@ -177,7 +178,7 @@ def call_QuBound(qc, fake_backend, token="ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf
 
 if __name__ == '__main__':
     # REPLACE WITH YOUR TOKEN OR SAVE ACCOUNT BEFORE RUNNING
-    MY_TOKEN = "ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"
+    MY_TOKEN = st.secrets["YOUR_TOKEN"]
     
     # Optional: Save account once to fix the AccountNotFoundError forever on this PC
     # QiskitRuntimeService.save_account(channel="ibm_quantum_platform", token=MY_TOKEN, overwrite=True)

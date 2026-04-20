@@ -12,6 +12,7 @@ from qiskit.quantum_info import hellinger_distance  # state_fidelity and total v
 from qiskit import transpile
 from qiskit_ibm_runtime.fake_provider import FakeFez
 from qiskit import qpy
+import streamlit as st
 
 
 from qiskit_circuit_general import *
@@ -219,7 +220,7 @@ def predict_vqc_bound(model, x_train):
 # this is the function that will be called by the website to run the QuBound from scratch
 # IF YOU WANT TO RUN THE VQE CHECK THE MAIN FUNCTION WHICH RUNS THE PRESET VQC train_circuit.qpy
 def call_QuBound(qc, provider, date = datetime.now()):
-    token="ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"
+    token=st.secrets["YOUR_TOKEN"]
     service = QiskitRuntimeService(
         channel="ibm_quantum_platform", 
         token=token,
@@ -261,7 +262,7 @@ def main():
     plt.show()
 
 
-    token="ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"
+    token=st.secrets["YOUR_TOKEN"]
     service = QiskitRuntimeService(
         channel="ibm_quantum_platform", 
         token=token,

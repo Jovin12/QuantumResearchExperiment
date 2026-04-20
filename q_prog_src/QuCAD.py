@@ -8,6 +8,7 @@ from qiskit_aer.noise import NoiseModel
 from qiskit_ibm_runtime import QiskitRuntimeService
 from datetime import datetime, timedelta
 from sklearn.cluster import KMeans
+import streamlit as st
 
 # --- Updated Helper for Per-Qubit Features ---
 def extract_noise_features(props):
@@ -165,7 +166,7 @@ def generate_qucad_lut(vqc, backend, days=20, clusters=4):
     return lut
 
 def get_noiseModel_andBackend_ondate(date_time=datetime.now()):
-    TOKEN = "ucK-WJCddM2wD85T6tXy3dSWpuj-FIH4GLw9kf48q7Bn"
+    TOKEN = st.secrets["YOUR_TOKEN"]
     service = QiskitRuntimeService(channel="ibm_quantum_platform", token=TOKEN)
     backend_ibm = service.backend("ibm_fez")
     target_props = backend_ibm.properties(datetime=date_time)

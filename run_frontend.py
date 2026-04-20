@@ -45,5 +45,5 @@ else:
     elif st.session_state.page == "Circuit Compress & Predict":
         # QExpeiment_CircuitCompressPerformance.page()
         QExperiment_showcase.page()
-    elif st.session_state.page == 'Circuit FlowChart Builder (PROTOTYPE)':
+    elif st.session_state.page == 'Circuit FlowChart Builder':
         flowChartProto.flow_page()
