@@ -27,8 +27,8 @@ if st.session_state.username != "":
         st.session_state.page = option_menu(
             menu_title=None,
             # options=["Home", "Quantum Experiment Data Entry", "Quantum Experiment Display", "Noise Injection Experiment", "Circuit Compress & Predict"],
-            options=["Home", "Quantum Experiment Display", "Circuit Compress & Predict", 'Circuit FlowChart Builder (PROTOTYPE)'],
-            icons=["house", "cloud-upload", "gear", "gear"],
+            options=["Home", "Circuit Compress & Predict", 'Circuit FlowChart Builder'],
+            icons=["house", "gear", "gear"],
             default_index=0
         )
 
