@@ -1,5 +1,5 @@
 ---
-title: My Quantum App
+title: JQub Quantum Experiments
 emoji: ⚛️
 colorFrom: blue
 colorTo: purple
