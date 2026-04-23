@@ -76,30 +76,53 @@ def execute(progress_container):
             else:
                 st.warning("CompressVQC: No parameterizable gates found.")
         
+
+
+
         elif "qucad_node" in nodes_present:
             c_bar.progress(20, text="Initializing QuCAD...")
-            # Logic for QuCAD from showcase
-            noise_model, backend_ibm, target_props = QuCAD.get_noiseModel_andBackend_ondate()
-            c_bar.progress(40, text="Getting QuCAD Training Data...")
-            
-            # Note: For fresh training logic, you can add state checks here
-            final_theta, final_mask, stats = QuCAD.run_qucad_training_noisy(
-                current_qc, noise_model, backend_ibm, iterations=10, lam=0.005, rho=500.0
-            )
-            qucad_bank = QuCAD.generate_qucad_lut(current_qc, backend_ibm)
-            c_bar.progress(60, text="Generating Lookup Table ...")
-            
-            # Apply drift/multiplier logic
-            # Using datetime.now() as default since flowchart date picker wasn't explicit
-            target_date = datetime.now() 
-            _, _, props_future = QuCAD.get_noiseModel_andBackend_ondate(target_date)
-            multiplier = QuCAD.get_current_noise_multiplier(props_future, backend_ibm.properties())
-            c_bar.progress(80, text="Applying Drift/Multiplier...")
-            current_qc = QuCAD.deploy_qucad_model(current_qc, qucad_bank, multiplier)
-            c_bar.progress(100, text="QuCAD Compression Finished")
-        else:
-            c_bar.progress(100, text="Compression Skipped")
 
+            if not st.session_state.get('qucad_bank', False):
+                
+                # Logic for QuCAD from showcase
+                noise_model, backend_ibm, target_props = QuCAD.get_noiseModel_andBackend_ondate()
+                c_bar.progress(40, text="Getting QuCAD Training Data...")
+                
+                # Note: For fresh training logic, you can add state checks here
+                final_theta, final_mask, stats = QuCAD.run_qucad_training_noisy(
+                    current_qc, noise_model, backend_ibm, iterations=10, lam=0.005, rho=500.0
+                )
+                st.session_state.qucad_bank = QuCAD.generate_qucad_lut(current_qc, backend_ibm)
+                c_bar.progress(60, text="Generating Lookup Table ...")
+                
+                # NEW: Save the model to backend if it's a fresh training
+                model_name = st.session_state.get('model_name')
+                username = st.session_state.get('username', 'anonymous')  # You'll need to set this from login
+                
+                if model_name and not st.session_state.get('qucad_model_saved', False):
+                    try:
+                        import requests
+                        qucad_bank_json = json.dumps(st.session_state.qucad_bank, cls=NumpyEncoder)
+                        response = requests.post(
+                            "http://127.0.0.1:8000/save_QuCAD",
+                            data={
+                                "username": username,
+                                "model_name": model_name,
+                                "qucad_bank": qucad_bank_json
+                            }
+                        )
+                        if response.status_code == 200:
+                            st.session_state.qucad_model_saved = True
+                            st.success(f"✅ QuCAD model '{model_name}' saved to database")
+                        else:
+                            st.warning(f"⚠️ Could not save model: {response.text}")
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not save model to database: {e}")
+
+
+
+            
+    # Apply drift/multiplier logic...
         # --- PHASE 2: FIDELITY ---
         if "qbound_node" in nodes_present:
             f_bar.progress(50, text="Calculating QuBound...")
@@ -110,8 +133,15 @@ def execute(progress_container):
                 f_bar.progress(100, text="QuBound Failed")
             else:
                 fidelity_result, model_jit = qbound_result
-                st.session_state.model = model_jit # Save for DB upload
+                st.session_state.qbound_model = model_jit # Save for DB upload
                 f_bar.progress(100, text="QuBound Finished")
+
+
+
+
+
+
+                
             
         elif "simple_node" in nodes_present:
             f_bar.progress(50, text="Calculating Simple Fidelity...")

@@ -10,7 +10,12 @@ from streamlit_flow import streamlit_flow
 from streamlit_flow.elements import StreamlitFlowNode, StreamlitFlowEdge
 from streamlit_flow.state import StreamlitFlowState
 from q_prog_src.execute_workflow import execute
+from q_prog_src import test_QBound
 from q_prog_src import qiskit_circuit_general
+import requests, json
+from css_page import inject_custom_css
+import torch 
+import io
 
 # ============================================
 # PAGE CONFIGURATION (must be first command)
@@ -20,205 +25,7 @@ st.set_page_config(page_title="Quantum Flow Builder", layout="wide", page_icon="
 # ============================================
 # LUXURY DARK THEME + GLASSMORPHISM CSS
 # ============================================
-def inject_custom_css():
-    st.markdown("""
-    <style>
-                
-                
-
-    /* Import modern sans-serif font */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&family=Montserrat:wght@400;500;600;700&display=swap');
-    
-    /* Global override for Streamlit's native dark mode - maintain dark luxury feel */
-    .stApp {
-        background: radial-gradient(circle at 20% 30%, #106e3f, #cccaca);
-    }
-    
-    /* Force all text to use luxury font family */
-    html, body, div, span, p, h1, h2, h3, h4, h5, h6, label, button, input, select, textarea {
-        font-family: 'Inter', 'Montserrat', sans-serif !important;
-    }
-    
-    # /* Glassmorphism effect for columns - frosted glass with blur and thin gold border */
-    # div[data-testid="stHorizontalBlock"] > div:nth-of-type(1),
-    # div[data-testid="stHorizontalBlock"] > div:nth-of-type(2) {
-    #     background: rgba(18, 18, 24, 0.55) !important;
-    #     backdrop-filter: blur(12px);
-    #     -webkit-backdrop-filter: blur(12px);
-    #     border-radius: 28px;
-    #     border: 1px solid rgba(212, 175, 55, 0.25);
-    #     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    #     transition: all 0.3s ease;
-    #     padding: 1.2rem;
-    # }
-                
-        /* Glassmorphism for Column 1 (Canvas) */
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(1) {
-        background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
-        backdrop-filter: blur(12px);
-        border-radius: 28px;
-        border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
-        # padding: 1.2rem;
-    }
-    
-    /* Glassmorphism for Column 2 (Node Palette) */
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(2) {
-        background: rgba(40, 30, 10, 0.3) !important; /* Gold tint background */
-        backdrop-filter: blur(12px);
-        border-radius: 28px;
-        border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
-        # padding: 1.2rem;
-    }
-                
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(3) {
-        background: rgba(40, 30, 10, 0.3) !important; /* Gold tint background */
-        backdrop-filter: blur(12px);
-        border-radius: 28px;
-        border: 1px solid rgba(212, 175, 55, 0.3); /* Gold border */
-        # padding: 1.2rem;
-    }
-
-    
-    /* Hover effect for glass panels */
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(1):hover,
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(2):hover,
-    div[data-testid="stHorizontalBlock"] > div:nth-of-type(3):hover {
-        border-color: rgba(0, 229, 255, 0.4);
-        box-shadow: 0 12px 40px rgba(0, 229, 255, 0.08);
-    }
-    
-    /* Premium pill-shaped buttons with glow effects */
-    div[data-testid="stButton"] button {
-        border-radius: 40px !important;
-        font-weight: 600;
-        letter-spacing: 0.3px;
-        transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
-        border: none;
-        # background: rgba(40, 30, 10, 0.4) !important; /* Gold tint background */
-        backdrop-filter: blur(4px);
-        color: #E0E0E0;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        padding: 2rem 1.2rem;
-        width: 100%;
-    }
-    
-    div[data-testid="stButton"] button:hover {
-        transform: translateY(-4px);
-    }    
-    div.st-key-btn_input button {
-        background: linear-gradient(135deg, #0b2b5e, #1a4a8a) !important;
-        color: white !important;
-    }
-    div.st-key-btn_backend_lux button {
-        background: linear-gradient(135deg, #2a1e5a, #4a2e8a) !important;
-        color: white !important;
-    }
-    
-    div.st-key-btn_compress_lux button {
-        background: linear-gradient(135deg, #aa6f20, #d4af37) !important;
-        color: white !important;
-    }
-    
-    div.st-key-btn_qucad_lux button {
-        background: linear-gradient(135deg, #d4af37, #f5cb5c) !important;
-    }
-    
-    div.st-key-btn_nocomp_lux button, div.st-key-btn_clear button {
-        background: linear-gradient(135deg, #8b5a2b, #c97e3a) !important;
-    }
-    
-    div.st-key-btn_qbound_lux button, div.st-key-btn_run button {
-        background: linear-gradient(135deg, #1b6b4a, #2d9c6e) !important; /* emerald */
-    }
-    
-    div.st-key-btn_simple_lux button {
-        background: linear-gradient(135deg, #2c6e6e, #3fa0a0) !important; /* cyan-teal */
-    }
-    
-    div.st-key-btn_transpile_lux button, div.st-key-btn_autoconnect button {
-        background: linear-gradient(135deg, #aa4f2e, #dd7a4a) !important; /* sunset orange */
-    }    
-    /* Category expander styling - luxury clean */
-    .streamlit-expanderHeader {
-        font-size: 1.1rem;
-        font-weight: 600;
-        background: rgba(0, 0, 0, 0.2);
-        border-radius: 18px;
-        color: #D4AF37 !important;
-        border-left: 3px solid #D4AF37;
-    }
-    
-    .streamlit-expanderContent {
-        background: rgba(10, 10, 15, 0.4);
-        border-radius: 20px;
-        padding: 0.5rem;
-    }
-    
-    /* Headers and subtitles in luxury gold/cyan */
-    h1, h2, h3, h4, .stSubheader, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-        color: #D4AF37 !important;
-        font-weight: 600;
-        letter-spacing: -0.2px;
-    }
-                
-    
-    
-    
-    .stSubheader {
-        color: #00E5FF !important;
-        font-size: 1.2rem;
-        font-weight: 500;
-    }
-    
-    /* Divider with gradient */
-    hr {
-        margin: 1rem 0;
-        border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, #D4AF37, #00E5FF, transparent);
-    }
-    
-    /* Custom scrollbar for containers */
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-        background: rgba(30,30,40,0.5);
-        border-radius: 10px;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #D4AF37;
-        border-radius: 10px;
-    }
-    
-    /* Label styling in property editor */
-    .stSelectbox label, .stSlider label, .stRadio label, .stFileUploader label {
-        color: #CCCCCC !important;
-        font-weight: 500;
-    }
-    
-    
-    /* Info box styling */
-    .stAlert {
-        background: rgba(0, 229, 255, 0.1) !important;
-        border-left: 3px solid #00E5FF !important;
-        border-radius: 16px !important;
-    }
-    
-    /* Canvas container specific */
-    .stVerticalBlock {
-        gap: 0.8rem;
-    }
-                
-    div[data-testid="stElementContainer"] .st-key-btn_input button {
-        background: linear-gradient(135deg, #aa6f20, #d4af37);
-        color: white;
-        border: none;
-    }
-    
-    </style>
-    """, unsafe_allow_html=True)
+inject_custom_css()
 
 # ============================================
 # QUANTUM NODES WITH GRADIENTS / GLOWING BORDERS
@@ -263,6 +70,13 @@ def flow_page():
         st.session_state.should_execute = False
     if 'execution_complete' not in st.session_state:
         st.session_state.execution_complete = False
+    if 'model_name' not in st.session_state: 
+        st.session_state.model_name = None
+    # Add this line with other initializations
+    if 'qbound_model_name' not in st.session_state:
+        st.session_state.qbound_model_name = None
+    if 'qbound_model' not in st.session_state:
+        st.session_state.qbound_model = None
     
     # Layout: Flow Canvas (col1) and Node Palette (col2)
     col1, col2 = st.columns([4, 1.75])
@@ -319,10 +133,10 @@ def flow_page():
         with c2:
             if st.button("QuCAD", key="btn_qucad_lux", use_container_width=True):
                 add_unique_node("qucad_node", "QuCAD", NODE_COLORS["qucad"])
-        c2 = st.columns([1])[0]  # Single column for NoCompression
-        with c2:
-            if st.button("⚡ NoCompression", key="btn_nocomp_lux", use_container_width=True):
-                add_unique_node("nocomp_node", "NoCompression", NODE_COLORS["nocomp"])
+        # c2 = st.columns([1])[0]  # Single column for NoCompression
+        # with c2:
+        #     if st.button("⚡ NoCompression", key="btn_nocomp_lux", use_container_width=True):
+        #         add_unique_node("nocomp_node", "NoCompression", NODE_COLORS["nocomp"])
 
         st.divider()
         # ---- FIDELITY SECTION ----
@@ -392,19 +206,135 @@ def flow_page():
                                        index=["ibm_fez", "ibm_marrakesh", "ibm_torino", "ibm_brisbane"].index(st.session_state.backend_name))
                 st.session_state.backend_name = backend
                 st.info("🔗 Backend noise profiles are available for QuCAD and QuBound")
+
+
             
             elif "qucad_node" == node_id:
                 st.info("🌀 QuCAD leverages backend noise for adaptive compression.")
-                mode = st.radio("Optimization Mode", ["Start Fresh", "Use Previous QNN"], horizontal=True)
-                if mode == "Use Previous QNN":
-                    st.success("Previous QNN weights will be reused.")
+                
+                # 1. Wrap the inputs in a form to stop the "typing" refresh
+                with st.form(key="qucad_search_form"):
+                    mode = st.radio("Optimization Mode", ["Start Fresh", "Use Previous QNN"], horizontal=True)
+                    
+                    # Use a default value from session state to keep it persistent
+                    model_input = st.text_input(
+                        "Enter your unique name for this QuCAD model:", 
+                        value=st.session_state.get('model_name', '') or ""
+                    )
+                    
+                    # Every form needs a submit button
+                    submit_button = st.form_submit_button(label="🔍 Load Model")
+
+                # 2. Logic only runs when the button is pressed
+                if submit_button:
+                    if mode == "Use Previous QNN":
+                        if model_input:
+                            st.session_state.model_name = model_input
+                            FASTAPI_URL = f"http://127.0.0.1:8000/load_QuCAD?model_name={model_input}"
+                            try:
+                                with st.spinner("Fetching model..."):
+                                    response = requests.get(FASTAPI_URL)
+                                    if response.status_code == 200:
+                                        # The backend returns a JSON object directly
+                                        qucad_bank_data = response.json()
+                                        
+                                        # The backend returns the qucad_bank as a string that needs parsing
+                                        # OR it returns a dict - check the type
+                                        if isinstance(qucad_bank_data, str):
+                                            qucad_bank_data = json.loads(qucad_bank_data)
+                                        
+                                        st.session_state.qucad_bank = qucad_bank_data
+                                        st.success(f"✅ Model '{model_input}' retrieved successfully")
+                                    else:
+                                        st.error(f"❌ Failed to retrieve model. Status code: {response.status_code}")
+                                        if response.status_code == 404:
+                                            st.warning(f"Model '{model_input}' not found in database. Try a different name or select 'Start Fresh'.")
+                            except requests.exceptions.ConnectionError:
+                                st.error("📡 Cannot connect to backend server. Make sure FastAPI is running on http://127.0.0.1:8000")
+                            except json.JSONDecodeError as e:
+                                st.error(f"❌ Error parsing model data: {e}")
+                            except Exception as e:
+                                st.error(f"❌ Unexpected error: {e}")
+                        else:
+                            st.warning("Please enter a model name.")
+                    else:  # Start Fresh mode
+                        st.info("Optimization set to Start Fresh. A new model will be created after execution.")
+                        # Clear any existing model name to avoid confusion
+                        if 'model_name' in st.session_state:
+                            st.session_state.model_name = None
+                        if 'qucad_bank' in st.session_state:
+                            st.session_state.qucad_bank = None
+
+
+
+
+
             
             elif "transpile_node" == node_id:
                 st.session_state.opt_level = st.slider("Qiskit Optimization Level", 0, 3, 1, help="Higher = more aggressive transpilation")
                 st.write(f"Optimization Level: {st.session_state.opt_level}")
             
+
+
+
+
+
             elif "qbound_node" == node_id:
-                st.session_state.error_tolerance = st.slider("Error Tolerance", 0.01, 0.5, 0.05, step=0.01, help="Bound on allowed infidelity")
+                # st.session_state.error_tolerance = st.slider("Error Tolerance", 0.01, 0.5, 0.05, step=0.01, help="Bound on allowed infidelity")
+                # 1. Wrap the inputs in a form to stop the "typing" refresh
+                with st.form(key="qucad_search_form"):
+                    mode = st.radio("Optimization Mode", ["Start Fresh", "Use Previous QuBound Model"], horizontal=True)
+                    
+                    # Use a default value from session state to keep it persistent
+                    model_input = st.text_input(
+                        "Enter your unique name for this QuBound model:", 
+                        value=st.session_state.get('model_name', '') or ""
+                    )
+                    
+                    # Every form needs a submit button
+                    submit_button = st.form_submit_button(label="🔍 Load Model")
+                
+                # res = requests.post("http://127.0.0.1:8000/save_QUbound", data=payload, files=files)
+                # FASTAPI_URL = f"http://127.0.0.1:8000/load_QUbound?model_name={model_name}"
+
+                if submit_button: 
+                    if mode == "Use Previous QuBound Model":
+                        if model_input: 
+                            st.session_state.q_bound_model_name = model_input
+                            FASTAPI_URL = f"http://127.0.0.1:8000/load_QUbound?model_name={st.session_state.q_bound_model_name}"
+
+                            try:
+                                with st.spinner("Fetching model..."):
+                                    response = requests.get(FASTAPI_URL)
+                                    if response.status_code == 200:
+                                        model_bytes = io.BytesIO(response.content)
+                                        st.session_state.qbound_model = torch.jit.load(model_bytes)
+                                        st.success("Model retrieved")
+                                    else:
+                                        st.error("Failed to retrieve model from database.")
+                            except Exception as e:
+                                st.error(f"Connection error: {e}")
+                        else:
+                            st.warning("Please enter a model name. ")
+                    else: 
+                        st.info("Optimization set to Start Fresh. A new model will be created after execution.")
+                        # Clear any existing model name to avoid confusion
+                        if 'model_name' in st.session_state:
+                            st.session_state.model_name = None
+                        if 'qbound_model' in st.session_state:
+                            st.session_state.qbound_model = None
+
+
+
+
+
+                
+
+
+
+
+
+
             
             elif "compress_node" == node_id:
                 st.checkbox("Preserve original gate structure", value=True)
@@ -473,7 +403,9 @@ def flow_page():
             with results_placeholder.container():
                 st.divider()
                 # st.success(f"✅ Execution Complete! Fidelity Score: {st.session_state.fidelity_error_bound:.6f}")
-                st.write(st.session_state.fidelity_error_bound)
+                # st.write(st.session_state.fidelity_error_bound)
+                st.write(test_QBound.interpret_qubound_results(st.session_state.fidelity_error_bound))
+
                 st.subheader("Circuit Diagram")
                 try:
                     fig = qiskit_circuit_general.display_circuit(st.session_state.main_qc)
