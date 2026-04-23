@@ -60,6 +60,8 @@ def get_node_style(node_type, color_gradient):
 def flow_page():
     # Inject luxury dark mode CSS with glassmorphism
     inject_custom_css()
+
+    st.session_state.opt_level = 3
     
     # Initialize Session State with robust persistence
     if 'flow_state' not in st.session_state:
@@ -270,9 +272,8 @@ def flow_page():
 
 
             
-            elif "transpile_node" == node_id:
-                st.session_state.opt_level = st.slider("Qiskit Optimization Level", 0, 3, 1, help="Higher = more aggressive transpilation")
-                st.write(f"Optimization Level: {st.session_state.opt_level}")
+        
+            
             
 
 
@@ -338,6 +339,9 @@ def flow_page():
             
             elif "compress_node" == node_id:
                 st.checkbox("Preserve original gate structure", value=True)
+
+            
+            st.write(f"Optimization Level: {st.session_state.opt_level}")
         
         # --- Action Buttons for Flow Management (Luxury Pill Style)---
         st.divider()
