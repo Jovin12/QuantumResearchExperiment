@@ -125,11 +125,12 @@ def get_gate_name_for_pair(properties, qubits):
             return gate_info.gate
     return None
 
-def look_back_window_ForError(backend, date_selected=None):
+def look_back_window_ForError(backend, date_selected=None, look_back_days = 5):
     if date_selected is None:
         date_selected = datetime.now()
     
-    look_back_days = 14
+    # look_back_days = 14
+    # look_back_days = 5
     historical_data = []
     print(f"Collecting 14 days of historical noise data...")
 
@@ -298,7 +299,7 @@ def train_loop(x_train, y_train):
     return model
 
 # --- Core QuBound Function (SAME signature, FIXED logic) ---
-def call_QuBound(qc, fake_backend, token=st.secrets["YOUR_TOKEN"]):
+def call_QuBound(qc, fake_backend, token=st.secrets["YOUR_TOKEN"], model = None):
     """
     Returns: (result_dict, model)
     result_dict = {
@@ -307,102 +308,174 @@ def call_QuBound(qc, fake_backend, token=st.secrets["YOUR_TOKEN"]):
         "lower": float        # Lower bound of 95% CI
     }
     """
-    try:
-        if token:
-            service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
-        else:
-            service = QiskitRuntimeService()
-            
-        real_backend = service.backend("ibm_fez")
-    except Exception as e:
-        print(f"Auth Error: {e}. Try running service.save_account(token='...') once.")
-        return None
+    if not model:
+        print(model)
+        try:
+            if token:
+                service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
+            else:
+                service = QiskitRuntimeService()
+                
+            real_backend = service.backend("ibm_fez")
+        except Exception as e:
+            print(f"Auth Error: {e}. Try running service.save_account(token='...') once.")
+            return None
 
-    # Data Processing
-    historic_data = look_back_window_ForError(real_backend)
+        # Data Processing
+        historic_data = look_back_window_ForError(real_backend)
+        
+        if len(historic_data) < 5:
+            print(f"Warning: Only {len(historic_data)} historical data points collected. Need at least 5.")
+            # Return fallback bounds
+            fallback_result = {
+                "prediction": np.array([0.5]),
+                "upper": np.array([0.7]),
+                "lower": np.array([0.3])
+            }
+            return fallback_result, None
+        
+        df = extract_time_series_from_historic(historic_data)
+        t, s, r = decompose_noise(df)
+        
+        combined = pd.concat([t, s, r], axis=1).fillna(0)
+        normalized = (combined - combined.mean()) / (combined.std() + 1e-9)
+        
+        # Feature Windows
+        window_size = min(5, len(normalized) // 2)
+        if window_size < 2:
+            window_size = 2
+        
+        data_val = normalized.values
+        x_seq = [data_val[i: i + window_size] for i in range(len(data_val) - window_size)]
+        x_train = torch.tensor(np.array(x_seq), dtype=torch.float32)
+        
+        # Labels (FIXED: now returns fidelity values)
+        y_train = get_labels_fromNoise(qc, historic_data, fake_backend, max_output_dim=1)
+        
+        # Align sequences
+        y_train = y_train[window_size:]
+        
+        # Ensure matching lengths
+        min_len = min(len(x_train), len(y_train))
+        x_train = x_train[:min_len]
+        y_train = y_train[:min_len]
+        
+        if len(x_train) == 0:
+            print("Error: Not enough data for training")
+            return None
+        
+        # Model Execution
+        model = train_loop(x_train, y_train)
     
-    if len(historic_data) < 5:
-        print(f"Warning: Only {len(historic_data)} historical data points collected. Need at least 5.")
-        # Return fallback bounds
+
+        model.eval()
+        
+        with torch.no_grad():
+            latest_noise = x_train[-1].unsqueeze(0)
+            prediction_fidelity = model(latest_noise).numpy()[0][0]  # Single float
+            
+            # Calculate prediction uncertainty using ensemble of recent predictions
+            recent_predictions = []
+            for i in range(max(0, len(x_train) - 5), len(x_train)):
+                pred_val = model(x_train[i:i+1]).numpy()[0][0]
+                recent_predictions.append(pred_val)
+            
+            if len(recent_predictions) > 1:
+                std_pred = np.std(recent_predictions)
+            else:
+                # Use historical variance as fallback
+                historical_fidelities = y_train.numpy().flatten()
+                std_pred = np.std(historical_fidelities) if len(historical_fidelities) > 1 else 0.05
+            
+            z = norm.ppf(0.975)  # 95% confidence interval
+            margin = z * std_pred
+            
+            # Clip to valid fidelity range [0, 1]
+            upper_bound = np.clip(prediction_fidelity + margin, 0, 1)
+            lower_bound = np.clip(prediction_fidelity - margin, 0, 1)
+            
+            # Return in original format (numpy arrays for compatibility)
+            result = {
+                "prediction": np.array([prediction_fidelity]),  # Keep as array for compatibility
+                "upper": np.array([upper_bound]),
+                "lower": np.array([lower_bound])
+            }
+
+    else: 
+        # if model is provided, skip
+        # df = extract_time_series_from_historic(historic_data)
+        # t, s, r = decompose_noise(df)
+        # try:
+        #     if token:
+        #         service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
+        #     else:
+        #         service = QiskitRuntimeService()
+                
+        #     real_backend = service.backend("ibm_fez")
+        # except Exception as e:
+        #     print(f"Auth Error: {e}. Try running service.save_account(token='...') once.")
+        #     return None
+
+        # # Data Processing
+        # historic_data = look_back_window_ForError(real_backend)
+        
+        # if len(historic_data) < 5:
+        #     print(f"Warning: Only {len(historic_data)} historical data points collected. Need at least 5.")
+        #     # Return fallback bounds
+        #     fallback_result = {
+        #         "prediction": np.array([0.5]),
+        #         "upper": np.array([0.7]),
+        #         "lower": np.array([0.3])
+        #     }
+        #     return fallback_result, None
+        
+        # df = extract_time_series_from_historic(historic_data)
+        # t, s, r = decompose_noise(df)
+        
+        # combined = pd.concat([t, s, r], axis=1).fillna(0)
+        # normalized = (combined - combined.mean()) / (combined.std() + 1e-9)
+        
+        # # Feature Windows
+        # window_size = min(5, len(normalized) // 2)
+        # if window_size < 2:
+        #     window_size = 2
+        
+        # data_val = normalized.values
+        # x_seq = [data_val[i: i + window_size] for i in range(len(data_val) - window_size)]
+        # x_train = torch.tensor(np.array(x_seq), dtype=torch.float32)
+        
+        # # Labels (FIXED: now returns fidelity values)
+        # y_train = get_labels_fromNoise(qc, historic_data, fake_backend, max_output_dim=1)
+        
+        # # Align sequences
+        # y_train = y_train[window_size:]
+        
+
+        # print(f"Warning: Only {len(historic_data)} historical data points collected. Need at least 5.")
+            # Return fallback bounds
         fallback_result = {
             "prediction": np.array([0.5]),
             "upper": np.array([0.7]),
             "lower": np.array([0.3])
         }
-        return fallback_result, None
-    
-    df = extract_time_series_from_historic(historic_data)
-    t, s, r = decompose_noise(df)
-    
-    combined = pd.concat([t, s, r], axis=1).fillna(0)
-    normalized = (combined - combined.mean()) / (combined.std() + 1e-9)
-    
-    # Feature Windows
-    window_size = min(5, len(normalized) // 2)
-    if window_size < 2:
-        window_size = 2
-    
-    data_val = normalized.values
-    x_seq = [data_val[i: i + window_size] for i in range(len(data_val) - window_size)]
-    x_train = torch.tensor(np.array(x_seq), dtype=torch.float32)
-    
-    # Labels (FIXED: now returns fidelity values)
-    y_train = get_labels_fromNoise(qc, historic_data, fake_backend, max_output_dim=1)
-    
-    # Align sequences
-    y_train = y_train[window_size:]
-    
-    # Ensure matching lengths
-    min_len = min(len(x_train), len(y_train))
-    x_train = x_train[:min_len]
-    y_train = y_train[:min_len]
-    
-    if len(x_train) == 0:
-        print("Error: Not enough data for training")
-        return None
-    
-    # Model Execution
-    model = train_loop(x_train, y_train)
-    model.eval()
-    
-    with torch.no_grad():
-        latest_noise = x_train[-1].unsqueeze(0)
-        prediction_fidelity = model(latest_noise).numpy()[0][0]  # Single float
+        result = fallback_result
+        prediction_fidelity = result['prediction'][0]
+        lower_bound = result['lower'][0]
+        upper_bound = result['upper'][0]
+        std_pred = (upper_bound - lower_bound) /(2 * norm.ppf(0.975))
         
-        # Calculate prediction uncertainty using ensemble of recent predictions
-        recent_predictions = []
-        for i in range(max(0, len(x_train) - 5), len(x_train)):
-            pred_val = model(x_train[i:i+1]).numpy()[0][0]
-            recent_predictions.append(pred_val)
+
+
+
         
-        if len(recent_predictions) > 1:
-            std_pred = np.std(recent_predictions)
-        else:
-            # Use historical variance as fallback
-            historical_fidelities = y_train.numpy().flatten()
-            std_pred = np.std(historical_fidelities) if len(historical_fidelities) > 1 else 0.05
         
-        z = norm.ppf(0.975)  # 95% confidence interval
-        margin = z * std_pred
-        
-        # Clip to valid fidelity range [0, 1]
-        upper_bound = np.clip(prediction_fidelity + margin, 0, 1)
-        lower_bound = np.clip(prediction_fidelity - margin, 0, 1)
-        
-        # Return in original format (numpy arrays for compatibility)
-        result = {
-            "prediction": np.array([prediction_fidelity]),  # Keep as array for compatibility
-            "upper": np.array([upper_bound]),
-            "lower": np.array([lower_bound])
-        }
-        
-        print(f"\n=== QuBound Performance Prediction ===")
-        print(f"Predicted Circuit Fidelity: {prediction_fidelity:.4f}")
-        print(f"95% Confidence Interval: [{lower_bound:.4f}, {upper_bound:.4f}]")
-        print(f"Prediction Uncertainty (σ): {std_pred:.4f}")
-        print("Final Bounds Calculated.")
-        
-        return result, model
+    print(f"\n=== QuBound Performance Prediction ===")
+    print(f"Predicted Circuit Fidelity: {prediction_fidelity:.4f}")
+    print(f"95% Confidence Interval: [{lower_bound:.4f}, {upper_bound:.4f}]")
+    print(f"Prediction Uncertainty (σ): {std_pred:.4f}")
+    print("Final Bounds Calculated.")
+    
+    return result, model
 
 if __name__ == '__main__':
     # REPLACE WITH YOUR TOKEN OR SAVE ACCOUNT BEFORE RUNNING

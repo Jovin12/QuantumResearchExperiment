@@ -6,6 +6,7 @@ import json
 import time
 from datetime import datetime
 from qiskit import transpile
+import requests
 
 # Import your quantum backend logic
 from q_prog_src import test_QBound, qiskit_circuit_general, CompVQC, QuCAD
@@ -101,8 +102,8 @@ def execute(progress_container):
                 
                 if model_name and not st.session_state.get('qucad_model_saved', False):
                     try:
-                        import requests
                         qucad_bank_json = json.dumps(st.session_state.qucad_bank, cls=NumpyEncoder)
+                        import requests
                         response = requests.post(
                             "http://127.0.0.1:8000/save_QuCAD",
                             data={
@@ -127,14 +128,67 @@ def execute(progress_container):
         if "qbound_node" in nodes_present:
             f_bar.progress(50, text="Calculating QuBound...")
             # We use None for date to default to current backend noise
-            qbound_result = test_QBound.call_QuBound(current_qc, provider)
+            st.write(st.session_state.get('qbound_model', None))
+            qbound_result = test_QBound.call_QuBound(current_qc, provider, model= st.session_state.get('qbound_model', None))
+
+
+
             if qbound_result is None:
                 st.error("❌ QuBound failed: Authentication error. Please check your IBM Quantum token.")
                 f_bar.progress(100, text="QuBound Failed")
+                
+            if st.session_state.get('qbound_model', None) is not None and qbound_result is not None: 
+                st.info(" No Upload: Using existing ")
+                fidelity_result, model_jit = qbound_result
             else:
                 fidelity_result, model_jit = qbound_result
                 st.session_state.qbound_model = model_jit # Save for DB upload
+
+                if st.session_state.get('qbound_model', None) is not None: 
+                    try:
+                        # Logic for JIT conversion and upload
+                        buffer = io.BytesIO()
+                        # print(st.session_state.qbound_model)
+                        # # torch.jit.save(st.session_state.qbound_model, buffer)
+                        # torch.save(st.session_state.qbound_model, buffer)
+
+                        print(st.session_state.qbound_model)
+        
+                        # Convert to TorchScript using tracing
+                        model = st.session_state.qbound_model
+                        model.eval()
+                        
+                        # Create a dummy input with the correct shape
+                        # Based on your model: LSTM(12, 32) expects input shape (batch, seq_len, 12)
+                        dummy_input = torch.randn(1, 5, 12)  # batch=1, sequence_length=5, input_features=12
+                        
+                        # Trace the model
+                        traced_model = torch.jit.trace(model, dummy_input)
+                        
+                        # Save the traced model
+                        torch.jit.save(traced_model, buffer)
+                        buffer.seek(0)
+
+
+                        payload = {"username": "user", "model_name": st.session_state.get('model_name', 'noNameqBound')}
+                        files = {"file": (f"{st.session_state.get('model_name', 'noNameqBound')}.pt", buffer, "application/octet-stream")}
+
+                        with st.spinner("Uploading..."):
+                            import requests
+                            res = requests.post("http://127.0.0.1:8000/save_QUbound", data=payload, files=files)
+                        
+                        if res.status_code == 200:
+                            st.success(f"Model '{st.session_state.get('model_name', 'noNameqBound')}' saved successfully!")
+                        else:
+                            st.error(f"Upload failed: {res.text}")
+                    except Exception as e:
+                        st.error(f"Error during upload: {e}")
+                
+
+
                 f_bar.progress(100, text="QuBound Finished")
+
+                
 
 
 

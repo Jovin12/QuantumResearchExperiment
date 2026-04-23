@@ -282,7 +282,7 @@ def flow_page():
             elif "qbound_node" == node_id:
                 # st.session_state.error_tolerance = st.slider("Error Tolerance", 0.01, 0.5, 0.05, step=0.01, help="Bound on allowed infidelity")
                 # 1. Wrap the inputs in a form to stop the "typing" refresh
-                with st.form(key="qucad_search_form"):
+                with st.form(key="qbound_search_form"):
                     mode = st.radio("Optimization Mode", ["Start Fresh", "Use Previous QuBound Model"], horizontal=True)
                     
                     # Use a default value from session state to keep it persistent
@@ -300,8 +300,8 @@ def flow_page():
                 if submit_button: 
                     if mode == "Use Previous QuBound Model":
                         if model_input: 
-                            st.session_state.q_bound_model_name = model_input
-                            FASTAPI_URL = f"http://127.0.0.1:8000/load_QUbound?model_name={st.session_state.q_bound_model_name}"
+                            st.session_state.qbound_model_name = model_input
+                            FASTAPI_URL = f"http://127.0.0.1:8000/load_QUbound?model_name={st.session_state.qbound_model_name}"
 
                             try:
                                 with st.spinner("Fetching model..."):
@@ -320,7 +320,7 @@ def flow_page():
                         st.info("Optimization set to Start Fresh. A new model will be created after execution.")
                         # Clear any existing model name to avoid confusion
                         if 'model_name' in st.session_state:
-                            st.session_state.model_name = None
+                            st.session_state.model_name = model_input if model_input else 'noNameqBound'
                         if 'qbound_model' in st.session_state:
                             st.session_state.qbound_model = None
 
