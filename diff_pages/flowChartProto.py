@@ -38,7 +38,8 @@ NODE_COLORS = {
     "nocomp": "linear-gradient(135deg, #8b5a2b, #c97e3a)",       # amber
     "qbound": "linear-gradient(135deg, #1b6b4a, #2d9c6e)",       # emerald
     "simple": "linear-gradient(135deg, #2c6e6e, #3fa0a0)",       # cyan-teal
-    "transpile": "linear-gradient(135deg, #aa4f2e, #dd7a4a)"      # sunset orange
+    "transpile": "linear-gradient(135deg, #aa4f2e, #dd7a4a)",     # sunset orange
+    "qushot": "linear-gradient(135deg, #7a1e5a, #c4468a)"         # rose-magenta
 }
 
 
@@ -153,12 +154,21 @@ def flow_page():
         st.divider()
         # ---- TRANSPILATION SECTION ----
         st.markdown("**⚙️ TRANSPILATION ENGINE**")
-        
+
         c1 = st.columns([1])[0]  # Single column for Transpiler
         with c1:
             if st.button("🚀 Transpile Node", key="btn_transpile_lux", use_container_width=True):
                 add_unique_node("transpile_node", "Transpiler", NODE_COLORS["transpile"])
-        
+
+        st.divider()
+        # ---- SHOT RECOMMENDATION SECTION ----
+        st.markdown("**🎯 SHOT RECOMMENDATION**")
+
+        c1 = st.columns([1])[0]
+        with c1:
+            if st.button("Qushot", key="btn_qushot_lux", use_container_width=True):
+                add_unique_node("qushot_node", "Qushot", NODE_COLORS["qushot"])
+
         st.divider()
         # st.caption("✨ Quantum nodes glow with electric cyan borders")
     
@@ -336,6 +346,50 @@ def flow_page():
 
 
             
+            elif "qushot_node" == node_id:
+                st.info("🎯 Qushot recommends how many shots your circuit needs to reach a target fidelity.")
+
+                # Discover bundled noise JSONs from qushot_internals/data/noise_json/
+                _NOISE_DIR = Path(__file__).parent.parent / "q_prog_src" / "qushot_internals" / "data" / "noise_json"
+                bundled_jsons = sorted([p.name for p in _NOISE_DIR.glob("*.json")]) if _NOISE_DIR.exists() else []
+
+                CUSTOM_OPTION = "📤 Upload custom JSON..."
+                PLACEHOLDER = "— Select a noise snapshot —"
+                choices = [PLACEHOLDER] + bundled_jsons + [CUSTOM_OPTION]
+
+                selected = st.selectbox(
+                    "Noise snapshot",
+                    choices,
+                    index=0,
+                    help="Pick a bundled IBM noise snapshot or upload your own.",
+                )
+
+                if selected == CUSTOM_OPTION:
+                    uploaded = st.file_uploader(
+                        "Upload noise JSON", type="json", key="qushot_custom_noise_upload",
+                        help="JSON in the Qshot dataset noise snapshot format.",
+                    )
+                    if uploaded is not None:
+                        try:
+                            noise_dict = json.load(uploaded)
+                            st.session_state.qushot_noise_json = noise_dict
+                            st.success(f"✅ Loaded custom noise JSON ({len(uploaded.getvalue())} bytes).")
+                        except json.JSONDecodeError as e:
+                            st.error(f"❌ Invalid JSON: {e}")
+                            st.session_state.qushot_noise_json = None
+                elif selected != PLACEHOLDER:
+                    st.session_state.qushot_noise_json = str(_NOISE_DIR / selected)
+                    st.caption(f"Using bundled: `{selected}`")
+                else:
+                    st.session_state.qushot_noise_json = None
+
+                alpha = st.slider(
+                    "Target fidelity fraction (α)", 0.50, 0.95,
+                    value=float(st.session_state.get('qushot_alpha', 0.95)), step=0.01,
+                    help="Recommend shots needed to reach α × converged fidelity.",
+                )
+                st.session_state.qushot_alpha = alpha
+
             elif "compress_node" == node_id:
                 st.checkbox("Preserve original gate structure", value=True)
         
@@ -356,7 +410,8 @@ def flow_page():
                 comp_n = next((nodes_dict[i] for i in ["compress_node", "qucad_node", "nocomp_node"] if i in nodes_dict), None)
                 fid_n = next((nodes_dict[i] for i in ["qbound_node", "simple_node"] if i in nodes_dict), None)
                 transpile_n = nodes_dict.get("transpile_node")
-                
+                qushot_n = nodes_dict.get("qushot_node")
+
                 # Build main quantum pipeline chain
                 if input_n:
                     current_source = input_n.id
@@ -368,13 +423,19 @@ def flow_page():
                         current_source = fid_n.id
                     if transpile_n:
                         new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{transpile_n.id}", current_source, transpile_n.id, animated=True, style={"stroke": "#00E5FF", "strokeWidth": 2}))
-                
+                        current_source = transpile_n.id
+                    if qushot_n:
+                        new_edges.append(StreamlitFlowEdge(f"edge-{current_source}-{qushot_n.id}", current_source, qushot_n.id, animated=True, style={"stroke": "#FF6EC7", "strokeWidth": 2}))
+                        current_source = qushot_n.id
+
                 # Backend connections to noise-aware nodes
                 if backend_n:
                     if "qucad_node" in nodes_dict:
                         new_edges.append(StreamlitFlowEdge("backend-to-qucad", backend_n.id, "qucad_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
                     if "qbound_node" in nodes_dict:
                         new_edges.append(StreamlitFlowEdge("backend-to-qbound", backend_n.id, "qbound_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
+                    if "qushot_node" in nodes_dict:
+                        new_edges.append(StreamlitFlowEdge("backend-to-qushot", backend_n.id, "qushot_node", animated=True, label="Noise Profile", style={"stroke": "#00E5FF", "strokeDasharray": "5,5"}))
                 
                 st.session_state.flow_state.edges = new_edges
                 st.rerun()
@@ -406,13 +467,50 @@ def flow_page():
                 # st.write(st.session_state.fidelity_error_bound)
                 st.write(test_QBound.interpret_qubound_results(st.session_state.fidelity_error_bound))
 
+                # --- Qushot results ---
+                qushot_result = st.session_state.get('qushot_result')
+                if qushot_result is not None:
+                    st.divider()
+                    st.subheader("🎯 Qushot Shot-Count Recommendation")
+                    col_a, col_b, col_c = st.columns(3)
+                    col_a.metric("Recommended Shots", qushot_result.get('recommended_shots', '—'))
+                    pf = qushot_result.get('predicted_fidelity')
+                    ps = qushot_result.get('predicted_std')
+                    if pf is not None:
+                        col_b.metric(
+                            "Predicted Fidelity",
+                            f"{pf:.4f}",
+                            delta=f"±{ps:.4f}" if ps is not None else None,
+                            delta_color="off",
+                        )
+                    col_c.metric("Method", qushot_result.get('method', '—'))
+
+                    fit = qushot_result.get('fit') or {}
+                    alpha = fit.get('alpha')
+                    target = fit.get('target')
+                    f_conv = fit.get('F_inf')
+                    if alpha is not None and target is not None:
+                        f_conv_str = f"{f_conv:.4f}" if isinstance(f_conv, float) else str(f_conv)
+                        st.caption(
+                            f"Target: α={alpha} × converged F "
+                            f"(F_inf={f_conv_str}) = {target:.4f}"
+                        )
+                    cl = qushot_result.get('cluster_label')
+                    tier = qushot_result.get('tier')
+                    nmatch = qushot_result.get('n_matched')
+                    if cl is not None:
+                        st.caption(f"Cluster: {cl} · Tier: {tier} · PF-matched neighbors: {nmatch}")
+
+                    with st.expander("Full recommendation details"):
+                        st.json(qushot_result)
+
                 st.subheader("Circuit Diagram")
                 try:
                     fig = qiskit_circuit_general.display_circuit(st.session_state.main_qc)
                     st.pyplot(fig)
                 except Exception as e:
                     st.error(f"Could not display circuit: {e}")
-                
+
                 # Reset flags for next run
                 if st.button("🔄 Run Again", key="btn_run_again"):
                     st.session_state.should_execute = False

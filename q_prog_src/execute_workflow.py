@@ -63,6 +63,7 @@ def execute(progress_container):
         c_bar = st.progress(0, text="Compression Phase")
         f_bar = st.progress(0, text="Fidelity Phase")
         t_bar = st.progress(0, text="Transpilation Phase")
+        s_bar = st.progress(0, text="Shots Recommendation Phase")
 
         # --- PHASE 1: COMPRESSION ---
         if "compress_node" in nodes_present:
@@ -163,7 +164,47 @@ def execute(progress_container):
         else:
             t_bar.progress(100, text="Transpilation Skipped")
 
-    
+        # --- PHASE 4: SHOTS RECOMMENDATION (Qushot) ---
+        # The frontend is expected to populate:
+        #   st.session_state['qushot_noise_json']  — path to a bundled JSON OR
+        #                                             a dict loaded from an upload
+        #   st.session_state['qushot_alpha']       — float, target fidelity fraction
+        #                                             (defaults to 0.95 if unset)
+        if "qushot_node" in nodes_present:
+            s_bar.progress(10, text="Qushot: preparing...")
+            noise_json = st.session_state.get('qushot_noise_json')
+            if noise_json is None:
+                st.error(
+                    "❌ Qushot: no noise JSON selected. "
+                    "Pick a bundled snapshot or upload one in the Qushot node."
+                )
+                s_bar.progress(100, text="Qushot Failed (no noise JSON)")
+            else:
+                try:
+                    from q_prog_src import Qushot
+                    alpha = st.session_state.get('qushot_alpha', 0.95)
+                    s_bar.progress(30, text="Qushot: loading recommender (first run ~30-60s)...")
+                    qushot_result = Qushot.recommend_shots(
+                        circuit=current_qc,
+                        noise_json=noise_json,
+                        nq=current_qc.num_qubits,
+                        alpha=alpha,
+                    )
+                    if qushot_result is None:
+                        st.error("❌ Qushot: recommender returned no result.")
+                        s_bar.progress(100, text="Qushot Failed")
+                    else:
+                        st.session_state.qushot_result = qushot_result
+                        st.session_state.qushot_recommended_shots = qushot_result.get('recommended_shots')
+                        rec = qushot_result.get('recommended_shots')
+                        s_bar.progress(100, text=f"Qushot: recommended {rec} shots")
+                except Exception as e:
+                    st.error(f"❌ Qushot error: {e}")
+                    s_bar.progress(100, text="Qushot Failed")
+        else:
+            s_bar.progress(100, text="Shots Skipped")
+
+
     # st.session_state.clear()
     # Store results back into session state for database forms
     st.session_state.fidelity_error_bound = fidelity_result

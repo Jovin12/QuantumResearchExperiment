@@ -1,0 +1,24 @@
+# Qshot — Python dependencies
+# Tested with Python 3.9.9 on Linux.
+# For PyTorch + torch_geometric extensions you likely need to match the CUDA /
+# PyTorch build; see https://pytorch.org/get-started/locally/ and
+# https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html
+
+qiskit==2.2.3
+qiskit-aer==0.17.2
+hdbscan==0.8.41
+numpy==2.0.2
+matplotlib==3.9.4
+networkx==3.2.1
+scikit-learn==1.6.1
+scipy==1.13.1
+
+# PyTorch stack (CUDA 12.4 build used during development; CPU-only also works)
+torch==2.6.0
+torch-geometric==2.6.1
+# The two extensions below must be installed from the PyG wheel index that
+# matches your torch + CUDA version. Example (CUDA 12.4, torch 2.6):
+#   pip install torch-scatter==2.1.2 torch-sparse==0.6.18 \
+#       -f https://data.pyg.org/whl/torch-2.6.0+cu124.html
+torch-scatter==2.1.2
+torch-sparse==0.6.18
