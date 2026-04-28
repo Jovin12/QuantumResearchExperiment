@@ -6,7 +6,6 @@ import json
 import time
 from datetime import datetime
 from qiskit import transpile
-import requests
 
 # Import your quantum backend logic
 from q_prog_src import test_QBound, qiskit_circuit_general, CompVQC, QuCAD
@@ -64,6 +63,7 @@ def execute(progress_container):
         c_bar = st.progress(0, text="Compression Phase")
         f_bar = st.progress(0, text="Fidelity Phase")
         t_bar = st.progress(0, text="Transpilation Phase")
+        s_bar = st.progress(0, text="Shots Recommendation Phase")
 
         # --- PHASE 1: COMPRESSION ---
         if "compress_node" in nodes_present:
@@ -102,8 +102,8 @@ def execute(progress_container):
                 
                 if model_name and not st.session_state.get('qucad_model_saved', False):
                     try:
-                        qucad_bank_json = json.dumps(st.session_state.qucad_bank, cls=NumpyEncoder)
                         import requests
+                        qucad_bank_json = json.dumps(st.session_state.qucad_bank, cls=NumpyEncoder)
                         response = requests.post(
                             "http://127.0.0.1:8000/save_QuCAD",
                             data={
@@ -128,67 +128,14 @@ def execute(progress_container):
         if "qbound_node" in nodes_present:
             f_bar.progress(50, text="Calculating QuBound...")
             # We use None for date to default to current backend noise
-            st.write(st.session_state.get('qbound_model', None))
-            qbound_result = test_QBound.call_QuBound(current_qc, provider, model= st.session_state.get('qbound_model', None))
-
-
-
+            qbound_result = test_QBound.call_QuBound(current_qc, provider)
             if qbound_result is None:
                 st.error("❌ QuBound failed: Authentication error. Please check your IBM Quantum token.")
                 f_bar.progress(100, text="QuBound Failed")
-                
-            if st.session_state.get('qbound_model', None) is not None and qbound_result is not None: 
-                st.info(" No Upload: Using existing ")
-                fidelity_result, model_jit = qbound_result
             else:
                 fidelity_result, model_jit = qbound_result
                 st.session_state.qbound_model = model_jit # Save for DB upload
-
-                if st.session_state.get('qbound_model', None) is not None: 
-                    try:
-                        # Logic for JIT conversion and upload
-                        buffer = io.BytesIO()
-                        # print(st.session_state.qbound_model)
-                        # # torch.jit.save(st.session_state.qbound_model, buffer)
-                        # torch.save(st.session_state.qbound_model, buffer)
-
-                        print(st.session_state.qbound_model)
-        
-                        # Convert to TorchScript using tracing
-                        model = st.session_state.qbound_model
-                        model.eval()
-                        
-                        # Create a dummy input with the correct shape
-                        # Based on your model: LSTM(12, 32) expects input shape (batch, seq_len, 12)
-                        dummy_input = torch.randn(1, 5, 12)  # batch=1, sequence_length=5, input_features=12
-                        
-                        # Trace the model
-                        traced_model = torch.jit.trace(model, dummy_input)
-                        
-                        # Save the traced model
-                        torch.jit.save(traced_model, buffer)
-                        buffer.seek(0)
-
-
-                        payload = {"username": "user", "model_name": st.session_state.get('model_name', 'noNameqBound')}
-                        files = {"file": (f"{st.session_state.get('model_name', 'noNameqBound')}.pt", buffer, "application/octet-stream")}
-
-                        with st.spinner("Uploading..."):
-                            import requests
-                            res = requests.post("http://127.0.0.1:8000/save_QUbound", data=payload, files=files)
-                        
-                        if res.status_code == 200:
-                            st.success(f"Model '{st.session_state.get('model_name', 'noNameqBound')}' saved successfully!")
-                        else:
-                            st.error(f"Upload failed: {res.text}")
-                    except Exception as e:
-                        st.error(f"Error during upload: {e}")
-                
-
-
                 f_bar.progress(100, text="QuBound Finished")
-
-                
 
 
 
@@ -208,9 +155,78 @@ def execute(progress_container):
             f_bar.progress(100, text="Fidelity Skipped")
 
         # --- PHASE 3: TRANSPILE ---
-        level = st.session_state.get('opt_level', 3)
-        current_qc = qiskit_circuit_general.transpile_optim(current_qc, provider,level)
-    
+        if "transpile_node" in nodes_present:
+            # Get opt_level from slider in flowChartProto
+            level = st.session_state.get('opt_level', 1)
+            t_bar.progress(50, text=f"Transpiling (Level {level})...")
+            current_qc = qiskit_circuit_general.transpile_optim(current_qc, provider,level)
+            t_bar.progress(100, text="Transpilation Finished")
+        else:
+            t_bar.progress(100, text="Transpilation Skipped")
+
+        # --- PHASE 4: SHOTS RECOMMENDATION (Qushot) ---
+        # The frontend is expected to populate:
+        #   st.session_state['qushot_noise_json']  — path to a bundled JSON OR
+        #                                             a dict loaded from an upload
+        #   st.session_state['qushot_alpha']       — float, target fidelity fraction
+        #                                             (defaults to 0.95 if unset)
+        # --- PHASE 4: SHOTS RECOMMENDATION (Qushot) ---
+        if "qushot_node" in nodes_present:
+            s_bar.progress(10, text="Qushot: preparing...")
+            noise_json = st.session_state.get('qushot_noise_json')
+            if noise_json is None:
+                st.error(
+                    "❌ Qushot: no noise JSON selected. "
+                    "Pick a bundled snapshot or upload one in the Qushot node."
+                )
+                s_bar.progress(100, text="Qushot Failed (no noise JSON)")
+            else:
+                try:
+                    from q_prog_src import Qushot
+                    alpha = st.session_state.get('qushot_alpha', 0.95)
+                    s_bar.progress(30, text="Qushot: loading recommender (first run ~30-60s)...")
+                    
+                    # Handle custom uploaded JSON (convert to a temporary file)
+                    if isinstance(noise_json, dict):
+                        # Save the dictionary to a temporary file
+                        import tempfile
+                        import json
+                        
+                        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp_file:
+                            json.dump(noise_json, tmp_file)
+                            tmp_path = tmp_file.name
+                        noise_json_path = tmp_path
+                    else:
+                        # Already a path string
+                        noise_json_path = noise_json
+                    
+                    qushot_result = Qushot.recommend_shots(
+                        circuit=current_qc,
+                        noise_json=noise_json_path,  # Always pass a path
+                        nq=current_qc.num_qubits,
+                        alpha=alpha,
+                    )
+                    
+                    # Clean up temporary file if we created one
+                    if isinstance(noise_json, dict):
+                        import os
+                        os.unlink(noise_json_path)
+                    
+                    if qushot_result is None:
+                        st.error("❌ Qushot: recommender returned no result.")
+                        s_bar.progress(100, text="Qushot Failed")
+                    else:
+                        st.session_state.qushot_result = qushot_result
+                        st.session_state.qushot_recommended_shots = qushot_result.get('recommended_shots')
+                        rec = qushot_result.get('recommended_shots')
+                        s_bar.progress(100, text=f"Qushot: recommended {rec} shots")
+                except Exception as e:
+                    st.error(f"❌ Qushot error: {e}")
+                    import traceback
+                    st.error(f"Traceback: {traceback.format_exc()}")
+                    s_bar.progress(100, text="Qushot Failed")
+
+
     # st.session_state.clear()
     # Store results back into session state for database forms
     st.session_state.fidelity_error_bound = fidelity_result
